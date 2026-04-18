@@ -84,7 +84,7 @@ Standard-Pulsdauer:
 
 ## Hinweise zur Verdrahtung
 
-- Alle A4988-Treiber muessen eine gemeinsame `GND` mit dem Motor-ESP haben.
+- Alle DRV8825-Treiber muessen eine gemeinsame `GND` mit dem Motor-ESP haben.
 - Die gemeinsame `STEP`-Leitung geht an alle Treiber parallel.
 - Jeder Treiber bekommt seine eigene `ENABLE`-Leitung.
 - Aktuelle Motor-zu-Pin-Zuordnung: Motor 1->GPIO5, Motor 2->GPIO6, Motor 3->GPIO7, Motor 4->GPIO8, Motor 5->GPIO9, Motor 6->GPIO10, Motor 7->GPIO11, Motor 8->GPIO12, Motor 9->GPIO13, Motor 10->GPIO14, Motor 11->GPIO17, Motor 12->GPIO18, Motor 13->GPIO1, Motor 14->GPIO2, Motor 15->GPIO38, Motor 16->GPIO39, Motor 17->GPIO40, Motor 18->GPIO41, Motor 19->GPIO42, Motor 20->GPIO47, Motor 21->GPIO48, Motor 22->GPIO19, Motor 23->GPIO20, Motor 24->GPIO3.
@@ -174,7 +174,7 @@ Default pulse duration:
 
 ## Wiring notes
 
-- All A4988 drivers must share `GND` with the motor ESP.
+- All DRV8825 drivers must share `GND` with the motor ESP.
 - The shared `STEP` line goes to all drivers in parallel.
 - Each driver gets its own `ENABLE` line.
 - Current motor-to-pin mapping: Motor 1->GPIO5, Motor 2->GPIO6, Motor 3->GPIO7, Motor 4->GPIO8, Motor 5->GPIO9, Motor 6->GPIO10, Motor 7->GPIO11, Motor 8->GPIO12, Motor 9->GPIO13, Motor 10->GPIO14, Motor 11->GPIO17, Motor 12->GPIO18, Motor 13->GPIO1, Motor 14->GPIO2, Motor 15->GPIO38, Motor 16->GPIO39, Motor 17->GPIO40, Motor 18->GPIO41, Motor 19->GPIO42, Motor 20->GPIO47, Motor 21->GPIO48, Motor 22->GPIO19, Motor 23->GPIO20, Motor 24->GPIO3.
