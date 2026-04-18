@@ -95,6 +95,12 @@ Verdrahtung:
 - `VCC -> 5V` oder `3.3V` je nach LCD-Backpack
 - `GND -> GND`
 
+Hinweis:
+
+- Wenn das Display ueber I2C zu schwach leuchten sollte, kann zuerst der Kontrast ueber den Drehwiderstand am LCD-Backpack eingestellt werden.
+- Falls das nicht ausreicht, kann statt `3.3V` auch `5V` fuer die Versorgung des Displays genutzt werden. Eventuell ist dann ein Level-Shifter zwischen `GPIO 8` und `GPIO 9` notwendig, um die ESP-Elektronik zu schuetzen.
+- Die meisten LCD-Backpacks bringen diese Anpassung allerdings bereits von sich aus mit.
+
 #### Keypad
 
 Logische 4x4-Matrix:
@@ -127,10 +133,18 @@ Hinweise:
 - Pulssignal-Eingang: `GPIO 18`
 - Im Code als `INPUT_PULLUP` konfiguriert
 
+Ein Video zum Einrichten des Muenzpruefers ist auf TikTok einsehbar:
+
+- https://www.tiktok.com/@flo3137/video/7628382295723887894
+
 Verdrahtung:
 
 - `Signal / pulse out -> GPIO 18`
 - `GND -> GND`
+
+Hinweis:
+
+- Wenn das Signal an `GPIO 18` zu schwach ist, kann es mit einem `10 kOhm`-Widerstand zwischen `5V` und `GPIO 18` verbessert werden.
 
 #### SD-Karte
 
