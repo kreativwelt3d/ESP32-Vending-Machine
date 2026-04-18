@@ -7,6 +7,24 @@ Language:
 
 Current firmware version in code: `1.6.2`
 
+Ready-to-flash firmware releases are available here:
+
+- https://github.com/kreativwelt3d/ESP32-Vending-Machine/releases
+
+Kurzanleitung Flashen:
+
+1. Passende `.bin`-Datei aus den Releases herunterladen.
+2. ESP32-S3 per USB verbinden.
+3. Firmware z. B. mit dem [ESP Web Tool](https://espressif.github.io/esptool-js/) oder `esptool` auf den ESP flashen.
+4. Nach dem Flashen den ESP neu starten und den ersten Setup-Dialog auf dem LCD durchlaufen.
+
+Quick flash guide:
+
+1. Download the matching `.bin` file from the releases page.
+2. Connect the ESP32-S3 via USB.
+3. Flash the firmware with the [ESP Web Tool](https://espressif.github.io/esptool-js/) or `esptool`.
+4. Reboot the ESP and complete the initial setup shown on the LCD.
+
 ---
 
 ## Deutsch
