@@ -1,6 +1,9 @@
 # Vending Machine Firmware (ESP32-S3)
 
-Deutsch unten, English below.
+Language:
+
+- [Deutsch](#deutsch)
+- [English](#english)
 
 Current firmware version in code: `1.6.2`
 
