@@ -1,5 +1,7 @@
 # Vending Machine Firmware (ESP32-S3)
 
+![Vending Machine](images/vending1.png)
+
 Language:
 
 - [Deutsch](#deutsch)
@@ -51,6 +53,10 @@ Diese Firmware steuert den Haupt-ESP eines Verkaufsautomaten. Der ESP32-S3 ueber
 - Erstellung einer gemergten Firmware-Datei fuer einfacheres Flashen
 
 ### Hardware und Verdrahtung
+
+![Aktuelle 5-Volt-Verdrahtung](images/electronic_wiring.png)
+
+*Aktuelle 5-Volt-Verdrahtung. Das Bild zeigt die komplette Verdrahtung aller Komponenten. Die 12V-Leitungen wurden bewusst weggelassen, um die Logik besser darzustellen.*
 
 Alle aktuell in der Firmware belegten GPIOs:
 
@@ -340,6 +346,10 @@ This firmware controls the main ESP of the vending machine. The ESP32-S3 handles
 - Automatic creation of a merged firmware image for easier flashing
 
 ### Hardware and wiring
+
+![Current 5-volt wiring](images/electronic_wiring.png)
+
+*Current 5-volt wiring. The image shows the complete wiring of all components. The 12V lines were intentionally omitted to make the logic easier to understand.*
 
 GPIOs currently used by the firmware:
 
