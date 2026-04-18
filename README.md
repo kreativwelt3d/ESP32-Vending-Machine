@@ -40,14 +40,14 @@ Ein besonderer Dank geht an den Hauptschoepfer Martin auf MakerWorld fuer den gr
 Ausserdem begleitet eine TikTok-Videoreihe den kompletten Aufbau dieses Projekts. Die Links dazu koennen hier eingetragen werden:
 
 Videoserie "Wir Drucken uns einen Verkaufsautomaten":
-- Serien Start Teil 1: `https://www.tiktok.com/@flo3137/video/7620130653631188246`
-- Aliexpress Lieferung + Unboxing Teil 2: `https://www.tiktok.com/@flo3137/video/7622039398799904022`
-- Haupt aufbau des Automaten Teil 3: `https://www.tiktok.com/@flo3137/video/7624063139864202518`
-- Elektronik Aufbau Teil 4: `https://www.tiktok.com/@flo3137/video/7625582070978628867`
-- SumUP Mod + Finaler Teil: `https://www.tiktok.com/@flo3137/video/7629085141201227031`
+- Serien Start Teil 1: https://www.tiktok.com/@flo3137/video/7620130653631188246
+- Aliexpress Lieferung + Unboxing Teil 2: https://www.tiktok.com/@flo3137/video/7622039398799904022
+- Haupt aufbau des Automaten Teil 3: https://www.tiktok.com/@flo3137/video/7624063139864202518
+- Elektronik Aufbau Teil 4: https://www.tiktok.com/@flo3137/video/7625582070978628867
+- SumUP Mod + Finaler Teil: https://www.tiktok.com/@flo3137/video/7629085141201227031
 
 Extra Videos:
-- BL616 Münzprüfer Setup: `https://www.tiktok.com/@flo3137/video/7628382295723887894`
+- BL616 Münzprüfer Setup: https://www.tiktok.com/@flo3137/video/7628382295723887894
 
 ### Ueberblick
 
@@ -379,14 +379,14 @@ Special thanks go to Martin on MakerWorld, the main creator of the original buil
 In addition, a TikTok video series documents the complete build of this project the Series is held upon in German.Maybe i can add some english voiceover later on:
 
 Videoseries "We print an vending machine":
-- Series start part 1: `https://www.tiktok.com/@flo3137/video/7620130653631188246`
-- Aliexpress delivered + Unboxing part 2: `https://www.tiktok.com/@flo3137/video/7622039398799904022`
-- Main build of the vendingmachine part 3: `https://www.tiktok.com/@flo3137/video/7624063139864202518`
-- Electronics part 4: `https://www.tiktok.com/@flo3137/video/7625582070978628867`
-- SumUP Mod + Final part: `https://www.tiktok.com/@flo3137/video/7629085141201227031`
+- Series start part 1: https://www.tiktok.com/@flo3137/video/7620130653631188246
+- Aliexpress delivered + Unboxing part 2: https://www.tiktok.com/@flo3137/video/7622039398799904022
+- Main build of the vendingmachine part 3: https://www.tiktok.com/@flo3137/video/7624063139864202518
+- Electronics part 4: https://www.tiktok.com/@flo3137/video/7625582070978628867
+- SumUP Mod + Final part: https://www.tiktok.com/@flo3137/video/7629085141201227031
 
 Extra Videos:
-- BL616 Coin acceptor Setup: `https://www.tiktok.com/@flo3137/video/7628382295723887894`
+- BL616 Coin acceptor Setup: https://www.tiktok.com/@flo3137/video/7628382295723887894
 
 ### Overview
 
