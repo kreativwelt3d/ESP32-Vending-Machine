@@ -1,29 +1,33 @@
-# Verkaufsautomat Firmware (ESP32-S3)
+# Vending Machine Firmware (ESP32-S3)
 
-Diese Firmware steuert den Haupt-ESP eines Verkaufsautomaten. Der ESP32-S3 übernimmt Anzeige, Tastenfeld, Münzannahme, SD-Karte, WLAN/Weboberfläche und die Kommunikation mit dem separaten Motor-ESP.
+Deutsch unten, English below.
 
-Aktuelle Firmware-Version im Code: `1.5.0`
+Current firmware version in code: `1.6.2`
 
 ---
 
-## Funktionsumfang
+## Deutsch
 
-- 4x4-Keypad für Bedienung und Service-Menü
-- 16x2-LCD über I2C
+### Ueberblick
+
+Diese Firmware steuert den Haupt-ESP eines Verkaufsautomaten. Der ESP32-S3 uebernimmt Anzeige, Tastenfeld, Muenzannahme, SD-Karte, WLAN/Weboberflaeche und die Kommunikation mit dem separaten Motor-ESP.
+
+### Funktionsumfang
+
+- 4x4-Keypad fuer Bedienung und Service-Menue
+- 16x2-LCD ueber I2C
 - Erststart- und Service-Keypad-Setup zur Tasten-Zuordnung
-- Münzprüfer mit frei konfigurierbaren Puls/Wert-Mappings
-- SD-Karte für Kassenbuch
+- Muenzpruefer mit frei konfigurierbaren Puls/Wert-Mappings
+- SD-Karte fuer Kassenbuch
 - WLAN-Konfiguration
-- Webserver für Konfiguration und Status
+- Webserver fuer Konfiguration und Status
 - Kommunikation mit separatem Motor-ESP per UART
 - Ansteuerung von bis zu 24 Motoren ueber den separaten Motor-ESP
-- Persistente Speicherung über Preferences (NVS)
+- Persistente Speicherung ueber Preferences (NVS)
+- SumUp-Anbindung fuer Kartenzahlung
+- Erstellung einer gemergten Firmware-Datei fuer einfacheres Flashen
 
----
-
-## Hardware & Verdrahtung
-
-### Gesamte Pinbelegung Haupt-ESP
+### Hardware und Verdrahtung
 
 Alle aktuell in der Firmware belegten GPIOs:
 
@@ -39,7 +43,7 @@ Alle aktuell in der Firmware belegten GPIOs:
 | Keypad | Col 2 | `15` |
 | Keypad | Col 3 | `16` |
 | Keypad | Col 4 | `17` |
-| Münzprüfer | Pulse input | `18` |
+| Muenzpruefer | Pulse input | `18` |
 | Motor-ESP UART | TX vom Haupt-ESP | `4` |
 | Motor-ESP UART | RX zum Haupt-ESP | `5` |
 | SD-Karte SPI | SCK / CLK | `39` |
@@ -47,9 +51,9 @@ Alle aktuell in der Firmware belegten GPIOs:
 | SD-Karte SPI | MISO / DO | `41` |
 | SD-Karte SPI | CS / SS | `42` |
 
-Nicht aufgeführte GPIOs sind in der aktuellen Hauptplatinen-Firmware nicht belegt.
+Nicht aufgefuehrte GPIOs sind in der aktuellen Hauptplatinen-Firmware nicht belegt.
 
-### LCD
+#### LCD
 
 - Display: `16x2`
 - I2C-Start im Code: `Wire.begin(8, 9)`
@@ -62,7 +66,7 @@ Verdrahtung:
 - `VCC -> 5V` oder `3.3V` je nach LCD-Backpack
 - `GND -> GND`
 
-### Keypad
+#### Keypad
 
 Logische 4x4-Matrix:
 
@@ -87,10 +91,9 @@ Physische Verdrahtung:
 Hinweise:
 
 - Beim ersten Start ohne gespeicherte Tasten-Zuordnung erscheint automatisch ein Keypad-Setup auf dem LCD.
-- Das Setup kann später erneut im Service-Menü über `Keypad Setup` gestartet werden.
-- Dadurch kann die Firmware auch mit unterschiedlich reagierenden oder anders verdrahteten 4x4-Keypads angepasst werden.
+- Das Setup kann spaeter erneut im Service-Menue ueber `Keypad Setup` gestartet werden.
 
-### Münzprüfer
+#### Muenzpruefer
 
 - Pulssignal-Eingang: `GPIO 18`
 - Im Code als `INPUT_PULLUP` konfiguriert
@@ -100,7 +103,7 @@ Verdrahtung:
 - `Signal / pulse out -> GPIO 18`
 - `GND -> GND`
 
-### SD-Karte
+#### SD-Karte
 
 Die SD-Karte wird im SPI-Modus betrieben.
 
@@ -116,12 +119,11 @@ Aktuell funktionierende Verdrahtung:
 Hinweise:
 
 - Diese Belegung wurde erfolgreich getestet.
-- Der testweise Pinblock `35/36/37/38` kann auf diesem Board zu Boot-Problemen führen.
-- Die Firmware probiert mehrere SPI-Frequenzen bei der Initialisierung und meldet den SD-Status im seriellen Monitor.
+- Der testweise Pinblock `35/36/37/38` kann auf diesem Board zu Boot-Problemen fuehren.
 
-### Motor-ESP UART
+#### Motor-ESP UART
 
-Der Haupt-ESP kommuniziert mit dem separaten Motor-ESP über UART:
+Der Haupt-ESP kommuniziert mit dem separaten Motor-ESP ueber UART:
 
 - `TX Haupt-ESP -> GPIO 4`
 - `RX Haupt-ESP -> GPIO 5`
@@ -133,61 +135,26 @@ Verdrahtung:
 - `GPIO 5` des Haupt-ESP an `TX` des Motor-ESP
 - `GND` beider ESPs verbinden
 
-Weitere Details zur Motor-Platine stehen in [motor_controller/README.md](d:/Github/testfg/Vending_Machine/motor_controller/README.md).
+Weitere Details zur Motor-Platine stehen in [motor_controller/README.md](motor_controller/README.md).
 
-### Motor-Zuordnung auf dem Motor-ESP
+### Bedienkonzept
 
-Die Hauptplatinen-Firmware adressiert aktuell `24` Motoren. Die Zuordnung auf dem Motor-ESP ist:
+#### Wichtige Tasten
 
-1. Motor 1 -> `GPIO5`
-2. Motor 2 -> `GPIO6`
-3. Motor 3 -> `GPIO7`
-4. Motor 4 -> `GPIO8`
-5. Motor 5 -> `GPIO9`
-6. Motor 6 -> `GPIO10`
-7. Motor 7 -> `GPIO11`
-8. Motor 8 -> `GPIO12`
-9. Motor 9 -> `GPIO13`
-10. Motor 10 -> `GPIO14`
-11. Motor 11 -> `GPIO17`
-12. Motor 12 -> `GPIO18`
-13. Motor 13 -> `GPIO1`
-14. Motor 14 -> `GPIO2`
-15. Motor 15 -> `GPIO38`
-16. Motor 16 -> `GPIO39`
-17. Motor 17 -> `GPIO40`
-18. Motor 18 -> `GPIO41`
-19. Motor 19 -> `GPIO42`
-20. Motor 20 -> `GPIO47`
-21. Motor 21 -> `GPIO48`
-22. Motor 22 -> `GPIO19`
-23. Motor 23 -> `GPIO20`
-24. Motor 24 -> `GPIO3`
+- `A` = Menue nach oben / Zeichensatz zurueck
+- `B` = Menue nach unten / Zeichensatz weiter
+- `C` = Zurueck / Abbrechen
+- `D` = Bestaetigen / Enter
+- `*` = Loeschen / Backspace
+- `#` = regulaeres Eingabezeichen in Textfeldern
 
-Hinweis:
+#### Service-Menue oeffnen
 
-- In der Weboberflaeche unter `Tests` wird pro Motor ebenfalls der zugehoerige `ENABLE`-GPIO des Motor-ESP angezeigt.
+Im Normalmodus wird das Service-Menue ueber eine schnelle Kombination aus `*` und `#` geoeffnet. Danach muss die Service-PIN eingegeben werden.
 
----
+#### Service-Menue
 
-## Bedienkonzept
-
-### Wichtige Tasten
-
-- `A` = Menü nach oben / Zeichensatz zurück
-- `B` = Menü nach unten / Zeichensatz weiter
-- `C` = Zurück / Abbrechen
-- `D` = Bestätigen / Enter
-- `*` = Löschen / Backspace
-- `#` = reguläres Eingabezeichen in Textfeldern
-
-### Service-Menü öffnen
-
-Im Normalmodus wird das Service-Menü über eine schnelle Kombination aus `*` und `#` geöffnet. Danach muss die Service-PIN eingegeben werden.
-
-### Service-Menü
-
-Aktuelle Menüpunkte:
+Aktuelle Menuepunkte:
 
 1. `Info`
 2. `WiFi`
@@ -196,26 +163,24 @@ Aktuelle Menüpunkte:
 5. `Keypad Setup`
 6. `Tuer oeffnen`
 
----
+### Weboberflaeche
 
-## Weboberfläche
-
-Der integrierte Webserver läuft auf Port `80`.
+Der integrierte Webserver laeuft auf Port `80`.
 
 Wichtige Bereiche:
 
-- Übersicht
+- Uebersicht
 - WiFi
 - E-Mail
 - SumUp
-- Münzen
-- Schächte
+- Muenzen
+- Schaechte
 - Kassenbuch
 - Tests
 
-### SumUp-Konfiguration
+#### SumUp-Konfiguration
 
-Im Tab `SumUp` werden die Parameter für die Kartenzahlung hinterlegt:
+Im Tab `SumUp` werden die Parameter fuer die Kartenzahlung hinterlegt:
 
 - `Aktiv`
 - `Server Basis-URL`
@@ -225,7 +190,7 @@ Im Tab `SumUp` werden die Parameter für die Kartenzahlung hinterlegt:
 - `Polling Intervall`
 - `Timeout`
 
-Beispiel für die `Server Basis-URL`:
+Beispiel fuer die `Server Basis-URL`:
 
 ```text
 https://sumup.kreativwelt3d.de/sumup/public
@@ -233,11 +198,11 @@ https://sumup.kreativwelt3d.de/sumup/public
 
 Hinweise:
 
-- Die Basis-URL muss genau auf den öffentlich erreichbaren PHP-Bridge-Endpunkt zeigen.
-- Der Bearer-Token schützt die Bridge-Endpunkte `/start` und `/status`.
-- `Machine ID` muss mit dem Wert übereinstimmen, den die Bridge für dieselbe Maschine erwartet.
+- Die Basis-URL muss auf den oeffentlich erreichbaren PHP-Bridge-Endpunkt zeigen.
+- Der Bearer-Token schuetzt die Bridge-Endpunkte `/start` und `/status`.
+- `Machine ID` muss mit dem Wert uebereinstimmen, den die Bridge fuer dieselbe Maschine erwartet.
 
-### Produkt- und Kartenzahlungsablauf
+#### Produkt- und Kartenzahlungsablauf
 
 Die Produktauswahl am 4x4-Keypad erfolgt zweistufig:
 
@@ -248,37 +213,35 @@ Beispiel:
 
 - `1` dann `2` = Reihe 1, Fach 2
 
-Wenn genügend Guthaben vorhanden ist:
+Wenn genuegend Guthaben vorhanden ist:
 
 - Das Produkt wird direkt ausgegeben.
 
 Wenn Guthaben fehlt und SumUp korrekt konfiguriert ist:
 
 - Das LCD zeigt `Kartenzahlung->A`
-- mit `A` wird die Kartenzahlung für genau diesen Artikel gestartet
-- das LCD zeigt anschließend `Terminal beachten`
+- mit `A` wird die Kartenzahlung fuer genau diesen Artikel gestartet
+- das LCD zeigt anschliessend `Terminal beachten`
 - nach erfolgreicher Transaktion wird die Ware automatisch ausgegeben
 - bei fehlgeschlagener oder abgebrochener Zahlung erfolgt keine Ausgabe
 
 Wichtig:
 
 - `A` startet im Normalmodus keine freie Betragsaufladung mehr.
-- Die Kartenzahlung ist jetzt direkt an den ausgewählten Artikel gekoppelt.
+- Die Kartenzahlung ist direkt an den ausgewaehlten Artikel gekoppelt.
 
-### Münzkonfiguration
+#### Muenzkonfiguration
 
 - Frei konfigurierbare Puls/Wert-Mappings
-- Bis zu `20` Einträge
-- Weboberfläche mit `Eintrag hinzufügen` und `Eintrag entfernen`
+- Bis zu `20` Eintraege
+- Weboberflaeche mit `Eintrag hinzufuegen` und `Eintrag entfernen`
 
-### Login
+#### Login
 
 - Login mit Service-/Admin-PIN
 - Session-Cookie: `ESPSESSIONID`
 
----
-
-## Persistente Einstellungen (NVS)
+### Persistente Einstellungen
 
 Namespace: `vending`
 
@@ -287,73 +250,227 @@ Gespeichert werden unter anderem:
 - Admin-PIN
 - WLAN-Daten
 - Sprache
-- Währung
+- Waehrung
 - Keypad-Zuordnung
-- Münz-Mappings
+- Muenz-Mappings
 - E-Mail-Konfiguration
 - Schacht-Konfiguration
 
----
-
-## Setup & Inbetriebnahme
+### Setup und Inbetriebnahme
 
 1. Board `esp32-s3-devkitc-1-n16r8` in PlatformIO verwenden.
-2. Firmware bauen und flashen.
-3. Seriellen Monitor mit `115200` Baud öffnen.
-4. Beim Erststart gegebenenfalls das Keypad-Setup auf dem LCD durchlaufen.
-5. SD-Karte und WLAN prüfen.
-6. Service-Menü und Weboberfläche für weitere Konfiguration verwenden.
+2. Firmware mit `platformio run` bauen.
+3. Fuer einfaches Komplett-Flashen die gemergte Datei `.pio/build/esp32-s3-devkitc-1/firmware-merged.bin` verwenden.
+4. Seriellen Monitor mit `115200` Baud oeffnen.
+5. Beim Erststart gegebenenfalls das Keypad-Setup auf dem LCD durchlaufen.
+6. SD-Karte und WLAN pruefen.
+7. Service-Menue und Weboberflaeche fuer weitere Konfiguration verwenden.
 
----
+### Fehlersuche
 
-## Ablauf im Hauptloop
+#### SD-Karte wird nicht erkannt
 
-Der `loop()` erledigt zyklisch:
-
-1. UART-Verarbeitung zum Motor-ESP
-2. Münzsignal-Erkennung
-3. WLAN-Verbindungsaufbau und Reconnect
-4. Auswertung laufender Pulsfolgen
-5. Webserver-Clientbearbeitung
-6. Keypad-Polling und Modus-abhängige Tastenverarbeitung
-
----
-
-## Fehlersuche
-
-### SD-Karte wird nicht erkannt
-
-- Prüfen, ob wirklich folgende Verdrahtung verwendet wird:
-  - `CLK -> GPIO 39`
-  - `MOSI -> GPIO 40`
-  - `MISO -> GPIO 41`
-  - `CS -> GPIO 42`
-- `3.3V` und `GND` prüfen
+- Verdrahtung fuer `GPIO 39/40/41/42` pruefen
+- `3.3V` und `GND` pruefen
 - Seriellen Monitor beobachten
-- Andere testweise Pinblöcke nicht ohne Prüfung übernehmen
 
-### Keypad reagiert falsch
+#### Keypad reagiert falsch
 
-- `Keypad Setup` im Service-Menü erneut ausführen
-- Verdrahtung von Rows und Cols prüfen
+- `Keypad Setup` im Service-Menue erneut ausfuehren
+- Verdrahtung von Rows und Cols pruefen
 
-### Kein Zugriff auf die Webseite
+#### Kein Zugriff auf die Webseite
 
-- WLAN-Verbindung prüfen
+- WLAN-Verbindung pruefen
 - IP-Adresse im Info-Screen oder seriellen Monitor nachsehen
 - Browser im selben Netzwerk verwenden
 
----
+### Sicherheit und Grenzen
 
-## Sicherheit & Grenzen
-
-- Authentifizierung erfolgt über PIN und Session-Cookie
+- Authentifizierung erfolgt ueber PIN und Session-Cookie
 - Kein HTTPS/TLS in der aktuellen Firmware
-- Für produktive Umgebungen sollte ein zusätzliches Sicherheitskonzept ergänzt werden
+- Fuer produktive Umgebungen sollte ein zusaetzliches Sicherheitskonzept ergaenzt werden
 
 ---
 
-## Hinweise
+## English
 
-- Diese README beschreibt die Hauptplatinen-Firmware in `src/sketch.ino`.
-- Die Motor-Platine hat eine eigene Firmware und eigene Dokumentation im Ordner `motor_controller`.
+### Overview
+
+This firmware controls the main ESP of the vending machine. The ESP32-S3 handles the display, keypad, coin acceptor, SD card, Wi-Fi/web interface, and communication with the separate motor ESP.
+
+### Features
+
+- 4x4 keypad for normal operation and service menu
+- 16x2 LCD via I2C
+- Initial and service keypad setup for key mapping
+- Coin acceptor with configurable pulse/value mappings
+- SD card support for the cashbook
+- Wi-Fi configuration
+- Web server for configuration and status pages
+- UART communication with a separate motor ESP
+- Control of up to 24 motors through the separate motor ESP
+- Persistent storage via Preferences (NVS)
+- SumUp integration for card payments
+- Automatic creation of a merged firmware image for easier flashing
+
+### Hardware and wiring
+
+GPIOs currently used by the firmware:
+
+| Function | Signal | GPIO |
+|----------|--------|------|
+| LCD I2C | SDA | `8` |
+| LCD I2C | SCL | `9` |
+| Keypad | Row 1 | `10` |
+| Keypad | Row 2 | `11` |
+| Keypad | Row 3 | `12` |
+| Keypad | Row 4 | `13` |
+| Keypad | Col 1 | `14` |
+| Keypad | Col 2 | `15` |
+| Keypad | Col 3 | `16` |
+| Keypad | Col 4 | `17` |
+| Coin acceptor | Pulse input | `18` |
+| Motor ESP UART | TX from main ESP | `4` |
+| Motor ESP UART | RX to main ESP | `5` |
+| SD card SPI | SCK / CLK | `39` |
+| SD card SPI | MOSI / DI | `40` |
+| SD card SPI | MISO / DO | `41` |
+| SD card SPI | CS / SS | `42` |
+
+Unlisted GPIOs are currently unused by the main board firmware.
+
+### User interaction
+
+Important keys:
+
+- `A` = menu up / previous character set
+- `B` = menu down / next character set
+- `C` = back / cancel
+- `D` = confirm / enter
+- `*` = delete / backspace
+- `#` = regular input character in text fields
+
+The service menu is opened in normal mode by pressing `*` and `#` quickly one after another, then entering the service PIN.
+
+Current service menu items:
+
+1. `Info`
+2. `WiFi`
+3. `Admin PIN`
+4. `Language`
+5. `Keypad Setup`
+6. `Open door`
+
+### Web interface
+
+The integrated web server runs on port `80`.
+
+Main sections:
+
+- Overview
+- WiFi
+- Email
+- SumUp
+- Coins
+- Shafts
+- Cashbook
+- Tests
+
+#### SumUp configuration
+
+The `SumUp` tab contains the parameters for card payments:
+
+- `Active`
+- `Server base URL`
+- `Bearer token`
+- `Machine ID`
+- `Currency`
+- `Polling interval`
+- `Timeout`
+
+Example base URL:
+
+```text
+https://sumup.kreativwelt3d.de/sumup/public
+```
+
+#### Product and card payment flow
+
+Product selection on the 4x4 keypad is a two-step process:
+
+- first `row 1-6`
+- then `slot 1-8`
+
+Example:
+
+- `1` then `2` = row 1, slot 2
+
+If enough credit is available:
+
+- The product is dispensed immediately.
+
+If there is not enough credit and SumUp is configured correctly:
+
+- the LCD shows `Kartenzahlung->A`
+- pressing `A` starts card payment for exactly that item
+- the LCD then shows `Terminal beachten`
+- after a successful transaction, the product is dispensed automatically
+- no product is dispensed if the payment fails or is cancelled
+
+### Persistent settings
+
+Namespace: `vending`
+
+Stored values include:
+
+- admin PIN
+- Wi-Fi settings
+- language
+- currency
+- keypad mapping
+- coin mappings
+- email configuration
+- shaft configuration
+
+### Build and flashing
+
+1. Use board `esp32-s3-devkitc-1-n16r8` in PlatformIO.
+2. Build with `platformio run`.
+3. For easy full flashing, use the merged image `.pio/build/esp32-s3-devkitc-1/firmware-merged.bin`.
+4. Open the serial monitor at `115200` baud.
+5. Run the LCD keypad setup on first boot if needed.
+6. Check SD card and Wi-Fi.
+7. Use the service menu and web UI for further configuration.
+
+### Troubleshooting
+
+#### SD card is not detected
+
+- Check wiring for `GPIO 39/40/41/42`
+- Check `3.3V` and `GND`
+- Watch the serial monitor output
+
+#### Keypad behaves incorrectly
+
+- Run `Keypad Setup` again from the service menu
+- Check row and column wiring
+
+#### Web interface is not reachable
+
+- Check the Wi-Fi connection
+- Look up the IP address on the info screen or in the serial monitor
+- Make sure the browser is on the same network
+
+### Security and limitations
+
+- Authentication uses a PIN and session cookie
+- No HTTPS/TLS in the current firmware
+- A dedicated security concept is recommended for production environments
+
+---
+
+Notes:
+
+- This README describes the main board firmware in `main_esp/src/sketch.ino`.
+- The motor controller board has its own firmware and documentation in `motor_controller`.
