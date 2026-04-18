@@ -33,6 +33,8 @@ Quick flash guide:
 
 Diese Firmware steuert den Haupt-ESP eines Verkaufsautomaten. Der ESP32-S3 uebernimmt Anzeige, Tastenfeld, Muenzannahme, SD-Karte, WLAN/Weboberflaeche und die Kommunikation mit dem separaten Motor-ESP.
 
+3D-Druck-Dateien und Hinweise zu den verfuegbaren Modifikationen findest du in [3DPrinting files/README.md](3DPrinting%20files/README.md).
+
 ### Funktionsumfang
 
 - 4x4-Keypad fuer Bedienung und Service-Menue
@@ -319,6 +321,8 @@ Gespeichert werden unter anderem:
 ### Overview
 
 This firmware controls the main ESP of the vending machine. The ESP32-S3 handles the display, keypad, coin acceptor, SD card, Wi-Fi/web interface, and communication with the separate motor ESP.
+
+3D printing files and notes about the available modifications can be found in [3DPrinting files/README.md](3DPrinting%20files/README.md).
 
 ### Features
 
