@@ -31,6 +31,24 @@ Quick flash guide:
 
 ## Deutsch
 
+### Vorwort
+
+Ein besonderer Dank geht an den Hauptschoepfer Martin auf MakerWorld fuer den grundlegenden Aufbau dieses Projekts und fuer das Bereitstellen der 3D-Druck-Dateien des Originalprojekts:
+
+- https://makerworld.com/de/models/2380835-full-size-modular-vending-machine#profileId-2607127
+
+Ausserdem begleitet eine TikTok-Videoreihe den kompletten Aufbau dieses Projekts. Die Links dazu koennen hier eingetragen werden:
+
+Videoserie "Wir Drucken uns einen Verkaufsautomaten":
+- Serien Start Teil 1: `https://www.tiktok.com/@flo3137/video/7620130653631188246`
+- Aliexpress Lieferung + Unboxing Teil 2: `https://www.tiktok.com/@flo3137/video/7622039398799904022`
+- Haupt aufbau des Automaten Teil 3: `https://www.tiktok.com/@flo3137/video/7624063139864202518`
+- Elektronik Aufbau Teil 4: `https://www.tiktok.com/@flo3137/video/7625582070978628867`
+- SumUP Mod + Finaler Teil: `https://www.tiktok.com/@flo3137/video/7629085141201227031`
+
+Extra Videos:
+- BL616 Münzprüfer Setup: `https://www.tiktok.com/@flo3137/video/7628382295723887894`
+
 ### Ueberblick
 
 Diese Firmware steuert den Haupt-ESP eines Verkaufsautomaten. Der ESP32-S3 uebernimmt Anzeige, Tastenfeld, Muenzannahme, SD-Karte, WLAN/Weboberflaeche und die Kommunikation mit dem separaten Motor-ESP.
@@ -351,6 +369,24 @@ Gespeichert werden unter anderem:
 ---
 
 ## English
+
+### Preface
+
+Special thanks go to Martin on MakerWorld, the main creator of the original build, for creating the foundation of this project and for providing the 3D printing files of the original project:
+
+- https://makerworld.com/de/models/2380835-full-size-modular-vending-machine#profileId-2607127
+
+In addition, a TikTok video series documents the complete build of this project the Series is held upon in German.Maybe i can add some english voiceover later on:
+
+Videoseries "We print an vending machine":
+- Series start part 1: `https://www.tiktok.com/@flo3137/video/7620130653631188246`
+- Aliexpress delivered + Unboxing part 2: `https://www.tiktok.com/@flo3137/video/7622039398799904022`
+- Main build of the vendingmachine part 3: `https://www.tiktok.com/@flo3137/video/7624063139864202518`
+- Electronics part 4: `https://www.tiktok.com/@flo3137/video/7625582070978628867`
+- SumUP Mod + Final part: `https://www.tiktok.com/@flo3137/video/7629085141201227031`
+
+Extra Videos:
+- BL616 Coin acceptor Setup: `https://www.tiktok.com/@flo3137/video/7628382295723887894`
 
 ### Overview
 
