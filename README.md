@@ -231,6 +231,20 @@ Hinweise:
 - Der Bearer-Token schuetzt die Bridge-Endpunkte `/start` und `/status`.
 - `Machine ID` muss mit dem Wert uebereinstimmen, den die Bridge fuer dieselbe Maschine erwartet.
 
+#### SumUp API Bridge
+
+Wenn du keine eigene SumUp API Bridge bauen und betreiben moechtest, kannst du die SumUp API Bridge auf meiner Webseite nutzen:
+
+- https://sumup.kreativwelt3d.de/
+
+Dieser Dienst kostet `5 EUR pro Monat` und kann nach der Anmeldung auf der Webseite ueber Stripe gebucht werden, wenn du keine eigene Bridge einsetzen willst.
+
+Damit wird das Projekt mitfinanziert, und ich freue mich sehr, wenn du mit deiner Buchung dabei mithilfst.
+
+Ueber den Dienst koennen dann beliebig viele SumUp-Terminals angebunden werden.
+
+![SumUp API Bridge](images/apibridge2.png)
+
 #### Produkt- und Kartenzahlungsablauf
 
 Die Produktauswahl am 4x4-Keypad erfolgt zweistufig:
@@ -375,6 +389,8 @@ GPIOs currently used by the firmware:
 
 Unlisted GPIOs are currently unused by the main board firmware.
 
+For the motor ESP pin mapping, see [motor_controller/README.md](motor_controller/README.md).
+
 ### User interaction
 
 Important keys:
@@ -429,6 +445,20 @@ Example base URL:
 ```text
 https://sumup.kreativwelt3d.de/sumup/public
 ```
+
+#### SumUp API Bridge
+
+If you do not want to build and host your own SumUp API bridge, you can use the SumUp API bridge on my website:
+
+- https://sumup.kreativwelt3d.de/
+
+This service costs `EUR 5 per month` and can be booked via Stripe after signing up on the website if you do not want to run your own bridge.
+
+This helps fund the project, and I really appreciate everyone who supports it by subscribing to the service.
+
+The service can be used to connect an unlimited number of SumUp terminals.
+
+![SumUp API Bridge](images/apibridge2.png)
 
 #### Product and card payment flow
 
