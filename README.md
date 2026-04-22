@@ -15,17 +15,19 @@ Ready-to-flash firmware releases are available here:
 
 Kurzanleitung Flashen:
 
-1. Passende `.bin`-Datei aus den Releases herunterladen.
+1. Fuer das [ESP Web Tool](https://espressif.github.io/esptool-js/) immer alle vier Dateien `bootloader.bin`, `partitions.bin`, `boot_app0.bin` und `firmware.bin` verwenden.
 2. ESP32-S3 per USB verbinden.
-3. Firmware z. B. mit dem [ESP Web Tool](https://espressif.github.io/esptool-js/) oder `esptool` auf den ESP flashen.
-4. Nach dem Flashen den ESP neu starten und den ersten Setup-Dialog auf dem LCD durchlaufen.
+3. Im ESP Web Tool mit `460800` Baud verbinden und `Flash Mode = DIO`, `Flash Frequency = 40m`, `Flash Size = 16MB` setzen.
+4. Dateien mit diesen Offsets flashen: `bootloader.bin -> 0x0`, `partitions.bin -> 0x8000`, `boot_app0.bin -> 0xE000`, `firmware.bin -> 0x10000`.
+5. Nach dem Flashen den ESP neu starten und den ersten Setup-Dialog auf dem LCD durchlaufen.
 
 Quick flash guide:
 
-1. Download the matching `.bin` file from the releases page.
+1. For the [ESP Web Tool](https://espressif.github.io/esptool-js/), always use all four files: `bootloader.bin`, `partitions.bin`, `boot_app0.bin`, and `firmware.bin`.
 2. Connect the ESP32-S3 via USB.
-3. Flash the firmware with the [ESP Web Tool](https://espressif.github.io/esptool-js/) or `esptool`.
-4. Reboot the ESP and complete the initial setup shown on the LCD.
+3. In the ESP Web Tool, connect with `460800` baud and set `Flash Mode = DIO`, `Flash Frequency = 40m`, and `Flash Size = 16MB`.
+4. Flash the files with these offsets: `bootloader.bin -> 0x0`, `partitions.bin -> 0x8000`, `boot_app0.bin -> 0xE000`, `firmware.bin -> 0x10000`.
+5. Reboot the ESP and complete the initial setup shown on the LCD.
 
 ---
 
@@ -68,7 +70,7 @@ Diese Firmware steuert den Haupt-ESP eines Verkaufsautomaten. Der ESP32-S3 ueber
 - Ansteuerung von bis zu 24 Motoren ueber den separaten Motor-ESP
 - Persistente Speicherung ueber Preferences (NVS)
 - SumUp-Anbindung fuer Kartenzahlung
-- Erstellung einer gemergten Firmware-Datei fuer einfacheres Flashen
+- Erstellung von Flash-Dateien fuer `esptool` und ESP Web Tool
 
 ### Hardware und Verdrahtung
 
@@ -224,6 +226,80 @@ Aktuelle Menuepunkte:
 5. `Keypad Setup`
 6. `Tuer oeffnen`
 
+#### WiFi-Text-Eingabe ueber das Keypad
+
+Bei der Eingabe von `SSID` und `Passwort` wird eine Multi-Tap-Eingabe verwendet.
+
+Bedienung:
+
+- `A` = einen Zeichensatz zurueckschalten
+- `B` = einen Zeichensatz weiterschalten
+- `C` = Eingabe abbrechen und zurueck
+- `D` = aktuelle Eingabe bestaetigen und speichern
+- `*` = aktives Zeichen verwerfen oder letztes Zeichen loeschen
+- Wenn dieselbe Zifferntaste mehrfach kurz hintereinander gedrueckt wird, wird durch die zugehoerigen Zeichen dieser Taste gewechselt
+- Nach einer kurzen Pause wird das aktuell ausgewaehlte Zeichen uebernommen
+
+Verfuegbare Zeichensaetze:
+
+- `ABC` = Grossbuchstaben
+- `abc` = Kleinbuchstaben
+- `123` = Zahlen
+- `Sym` = Sonderzeichen
+
+Tastenbelegung:
+
+- `0`
+  Leerzeichen, `0` im Modus `ABC` und `abc`
+  `0`, Leerzeichen, `@` im Modus `Sym`
+  nur `0` im Modus `123`
+- `1`
+  `1 . - _` im Modus `ABC` und `abc`
+  `1 .` im Modus `123`
+  `. - _ /` im Modus `Sym`
+- `2`
+  `A B C 2` im Modus `ABC`
+  `a b c 2` im Modus `abc`
+  `2` im Modus `123`
+  `# $ % &` im Modus `Sym`
+- `3`
+  `D E F 3` im Modus `ABC`
+  `d e f 3` im Modus `abc`
+  `3` im Modus `123`
+  `* + = "` im Modus `Sym`
+- `4`
+  `G H I 4` im Modus `ABC`
+  `g h i 4` im Modus `abc`
+  `4` im Modus `123`
+  `( ) , ;` im Modus `Sym`
+- `5`
+  `J K L 5` im Modus `ABC`
+  `j k l 5` im Modus `abc`
+  `5` im Modus `123`
+  `: ! ? '` im Modus `Sym`
+- `6`
+  `M N O 6` im Modus `ABC`
+  `m n o 6` im Modus `abc`
+  `6` im Modus `123`
+  `[ ] { }` im Modus `Sym`
+- `7`
+  `P Q R S 7` im Modus `ABC`
+  `p q r s 7` im Modus `abc`
+  `7` im Modus `123`
+  `< > | \` im Modus `Sym`
+- `8`
+  `T U V 8` im Modus `ABC`
+  `t u v 8` im Modus `abc`
+  `8` im Modus `123`
+  `^ ~ `` im Modus `Sym`
+- `9`
+  `W X Y Z 9` im Modus `ABC`
+  `w x y z 9` im Modus `abc`
+  `9` im Modus `123`
+  `@` im Modus `Sym`
+- `#`
+  `#` in allen Zeichensaetzen
+
 ### Weboberflaeche
 
 Der integrierte Webserver laeuft auf Port `80`.
@@ -335,11 +411,13 @@ Gespeichert werden unter anderem:
 
 1. Board `esp32-s3-devkitc-1-n16r8` in PlatformIO verwenden.
 2. Firmware mit `platformio run` bauen.
-3. Fuer einfaches Komplett-Flashen die gemergte Datei `.pio/build/esp32-s3-devkitc-1/firmware-merged.bin` verwenden.
-4. Seriellen Monitor mit `115200` Baud oeffnen.
-5. Beim Erststart gegebenenfalls das Keypad-Setup auf dem LCD durchlaufen.
-6. SD-Karte und WLAN pruefen.
-7. Service-Menue und Weboberflaeche fuer weitere Konfiguration verwenden.
+3. Fuer das ESP Web Tool nicht die gemergte Datei `firmware-merged.bin` verwenden, sondern die vier Einzeldateien aus `.pio/build/esp32-s3-devkitc-1/`.
+4. Im ESP Web Tool mit `460800` Baud verbinden und `Flash Mode = DIO`, `Flash Frequency = 40m`, `Flash Size = 16MB` setzen.
+5. Dateien mit diesen Offsets flashen: `bootloader.bin -> 0x0`, `partitions.bin -> 0x8000`, `boot_app0.bin -> 0xE000`, `firmware.bin -> 0x10000`.
+6. Seriellen Monitor mit `115200` Baud oeffnen.
+7. Beim Erststart gegebenenfalls das Keypad-Setup auf dem LCD durchlaufen.
+8. SD-Karte und WLAN pruefen.
+9. Service-Menue und Weboberflaeche fuer weitere Konfiguration verwenden.
 
 ### Fehlersuche
 
@@ -407,7 +485,7 @@ This firmware controls the main ESP of the vending machine. The ESP32-S3 handles
 - Control of up to 24 motors through the separate motor ESP
 - Persistent storage via Preferences (NVS)
 - SumUp integration for card payments
-- Automatic creation of a merged firmware image for easier flashing
+- Automatic creation of flash files for `esptool` and ESP Web Tool
 
 ### Hardware and wiring
 
@@ -462,6 +540,80 @@ Current service menu items:
 4. `Language`
 5. `Keypad Setup`
 6. `Open door`
+
+#### WiFi text input via keypad
+
+When entering `SSID` and `password`, the firmware uses a multi-tap text input.
+
+Controls:
+
+- `A` = switch to the previous character set
+- `B` = switch to the next character set
+- `C` = cancel input and go back
+- `D` = confirm and save the current input
+- `*` = discard the active character or delete the last committed character
+- Pressing the same number key multiple times quickly cycles through the characters assigned to that key
+- After a short pause, the currently selected character is committed
+
+Available character sets:
+
+- `ABC` = uppercase letters
+- `abc` = lowercase letters
+- `123` = numbers
+- `Sym` = symbols
+
+Key mapping:
+
+- `0`
+  space, `0` in `ABC` and `abc`
+  space, `0`, `@` in `Sym`
+  only `0` in `123`
+- `1`
+  `1 . - _` in `ABC` and `abc`
+  `1 .` in `123`
+  `. - _ /` in `Sym`
+- `2`
+  `A B C 2` in `ABC`
+  `a b c 2` in `abc`
+  `2` in `123`
+  `# $ % &` in `Sym`
+- `3`
+  `D E F 3` in `ABC`
+  `d e f 3` in `abc`
+  `3` in `123`
+  `* + = "` in `Sym`
+- `4`
+  `G H I 4` in `ABC`
+  `g h i 4` in `abc`
+  `4` in `123`
+  `( ) , ;` in `Sym`
+- `5`
+  `J K L 5` in `ABC`
+  `j k l 5` in `abc`
+  `5` in `123`
+  `: ! ? '` in `Sym`
+- `6`
+  `M N O 6` in `ABC`
+  `m n o 6` in `abc`
+  `6` in `123`
+  `[ ] { }` in `Sym`
+- `7`
+  `P Q R S 7` in `ABC`
+  `p q r s 7` in `abc`
+  `7` in `123`
+  `< > | \` in `Sym`
+- `8`
+  `T U V 8` in `ABC`
+  `t u v 8` in `abc`
+  `8` in `123`
+  `^ ~ `` in `Sym`
+- `9`
+  `W X Y Z 9` in `ABC`
+  `w x y z 9` in `abc`
+  `9` in `123`
+  `@` in `Sym`
+- `#`
+  `#` in all character sets
 
 ### Web interface
 
@@ -552,11 +704,13 @@ Stored values include:
 
 1. Use board `esp32-s3-devkitc-1-n16r8` in PlatformIO.
 2. Build with `platformio run`.
-3. For easy full flashing, use the merged image `.pio/build/esp32-s3-devkitc-1/firmware-merged.bin`.
-4. Open the serial monitor at `115200` baud.
-5. Run the LCD keypad setup on first boot if needed.
-6. Check SD card and Wi-Fi.
-7. Use the service menu and web UI for further configuration.
+3. For the ESP Web Tool, do not use the merged image `firmware-merged.bin`; use the four separate files from `.pio/build/esp32-s3-devkitc-1/` instead.
+4. In the ESP Web Tool, connect with `460800` baud and set `Flash Mode = DIO`, `Flash Frequency = 40m`, and `Flash Size = 16MB`.
+5. Flash the files with these offsets: `bootloader.bin -> 0x0`, `partitions.bin -> 0x8000`, `boot_app0.bin -> 0xE000`, `firmware.bin -> 0x10000`.
+6. Open the serial monitor at `115200` baud.
+7. Run the LCD keypad setup on first boot if needed.
+8. Check SD card and Wi-Fi.
+9. Use the service menu and web UI for further configuration.
 
 ### Troubleshooting
 

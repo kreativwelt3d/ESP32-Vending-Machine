@@ -27,6 +27,10 @@
 #define VM_ENABLE_WIFI 1
 #endif
 
+#ifndef VM_RGB_LED_PIN
+#define VM_RGB_LED_PIN 48
+#endif
+
 // =====================================================
 // Projekt Beschreibung
 // Dieses Projekt steuert eines ESP32 S3 für einen Verkaufsautomaten.
@@ -143,7 +147,7 @@ String emailPassword = "";
 String emailFrom = "";
 String emailTo = "";
 uint8_t emailLowStockThreshold = 1;
-UiLanguage currentLanguage = LANG_DE;
+UiLanguage currentLanguage = LANG_EN;
 String currentCurrency = "EUR";
 
 // =====================================================
@@ -163,7 +167,7 @@ const unsigned long multiTapTimeoutMs = 900;
 
 // WiFi Status
 bool wifiConnected = false;
-String wifiStatusMessage = "Nicht verbunden";
+String wifiStatusMessage = "Not connected";
 unsigned long lastWifiAttemptMs = 0;
 const unsigned long wifiRetryIntervalMs = 60000;
 bool wifiStackInitialized = false;
@@ -458,6 +462,34 @@ char lastSpecialKey = '\0';
 unsigned long lastSpecialKeyTime = 0;
 const unsigned long comboWindowMs = 400;
 
+void printBootBanner() {
+  Serial.println();
+  Serial.println(" __      __             _ _             ___  ____ ");
+  Serial.println(" \\ \\    / /__ _ _  __ _(_|_)_ _  __ _  / _ \\/ ___|");
+  Serial.println("  \\ \\/\\/ / -_) ' \\/ _` | | | ' \\/ _` || | | \\___ \\");
+  Serial.println("   \\_/\\_/\\___|_||_\\__,_|_|_|_||_\\__, || |_| |___) |");
+  Serial.println("                                |___/  \\___/|____/ ");
+  Serial.println(" Version: " FW_VERSION);
+  Serial.println();
+}
+
+void setBootRgbColor(uint8_t r, uint8_t g, uint8_t b) {
+#if defined(RGB_BUILTIN)
+  neopixelWrite(RGB_BUILTIN, r, g, b);
+#else
+  neopixelWrite(VM_RGB_LED_PIN, r, g, b);
+#endif
+}
+
+void blinkBootSuccessLed() {
+  for (int i = 0; i < 2; i++) {
+    setBootRgbColor(0, 48, 0);
+    delay(140);
+    setBootRgbColor(0, 0, 0);
+    delay(140);
+  }
+}
+
 // =====================================================
 // Anzeige
 // =====================================================
@@ -467,18 +499,18 @@ String lang(const String& de, const String& en) {
 
 const char* getResetReasonText(esp_reset_reason_t reason) {
   switch (reason) {
-    case ESP_RST_UNKNOWN:   return "Unbekannt";
+    case ESP_RST_UNKNOWN:   return "Unknown";
     case ESP_RST_POWERON:   return "Power-On";
-    case ESP_RST_EXT:       return "Externer Reset";
-    case ESP_RST_SW:        return "Software Reset";
+    case ESP_RST_EXT:       return "External reset";
+    case ESP_RST_SW:        return "Software reset";
     case ESP_RST_PANIC:     return "Kernel Panic";
     case ESP_RST_INT_WDT:   return "Interrupt Watchdog";
     case ESP_RST_TASK_WDT:  return "Task Watchdog";
-    case ESP_RST_WDT:       return "Anderer Watchdog";
+    case ESP_RST_WDT:       return "Other watchdog";
     case ESP_RST_DEEPSLEEP: return "Deep Sleep";
     case ESP_RST_BROWNOUT:  return "Brownout";
     case ESP_RST_SDIO:      return "SDIO";
-    default:                return "Nicht zugeordnet";
+    default:                return "Unassigned";
   }
 }
 
@@ -533,6 +565,12 @@ void lcdPrint2(const String& line1, const String& line2 = "") {
 void showTemporaryMessage(const String& line1, const String& line2 = "", unsigned long delayMs = 1200) {
   lcdPrint2(line1, line2);
   delay(delayMs);
+}
+
+void showBootSplash() {
+  if (!lcdAvailable) return;
+  lcdPrint2("Vending OS", String("Version ") + FW_VERSION);
+  delay(1400);
 }
 
 void showNormalScreen() {
@@ -842,14 +880,14 @@ void loadSettings() {
   keypadNeedsSetup = false;
 
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, nutze Standardwerte");
+    Serial.println("NVS not ready, using defaults");
     return;
   }
 
   if (!prefs.begin("vending", true)) {
-    Serial.println("Preferences: read-only open fehlgeschlagen");
+    Serial.println("Preferences: read-only open failed");
     if (prefs.begin("vending", false)) {
-      Serial.println("Preferences Namespace neu angelegt, nutze Standardwerte");
+      Serial.println("Preferences namespace created, using defaults");
       namespaceCreated = true;
       prefs.end();
     }
@@ -891,7 +929,7 @@ void loadSettings() {
     if (emailLowStockThreshold > productShaftMaxCapacity) {
       emailLowStockThreshold = productShaftMaxCapacity;
     }
-    currentLanguage = getPrefStringOrDefault("lang", "de") == "en" ? LANG_EN : LANG_DE;
+    currentLanguage = getPrefStringOrDefault("lang", "en") == "en" ? LANG_EN : LANG_DE;
     currentCurrency = getPrefStringOrDefault("currency", "EUR");
     String storedKeyMap = getPrefStringOrDefault("keyMap", "");
     if (storedKeyMap.length() == keypadKeyCount) {
@@ -1008,12 +1046,12 @@ void saveAllSettings() {
 
 void saveAdminPin() {
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, PIN konnte nicht gespeichert werden");
+    Serial.println("NVS not ready, PIN could not be saved");
     return;
   }
 
   if (!prefs.begin("vending", false)) {
-    Serial.println("Preferences: write open fehlgeschlagen (PIN)");
+    Serial.println("Preferences: write open failed (PIN)");
     return;
   }
 
@@ -1021,18 +1059,18 @@ void saveAdminPin() {
   prefs.end();
 
   if (written == 0) {
-    Serial.println("Preferences: adminPin wurde nicht geschrieben");
+    Serial.println("Preferences: adminPin was not written");
   }
 }
 
 void saveWifiSettings() {
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, WiFi-Einstellungen nicht gespeichert");
+    Serial.println("NVS not ready, WiFi settings not saved");
     return;
   }
 
   if (!prefs.begin("vending", false)) {
-    Serial.println("Preferences: write open fehlgeschlagen (WiFi)");
+    Serial.println("Preferences: write open failed (WiFi)");
     return;
   }
 
@@ -1057,7 +1095,7 @@ void saveWifiSettings() {
     (ntpWritten == wifiNtpServer.length());
 
   if (!allWritten) {
-    Serial.println("Preferences: WiFi-Werte konnten nicht vollstaendig geschrieben werden");
+    Serial.println("Preferences: WiFi values could not be written completely");
     Serial.printf("  SSID=%u/%u PASS=%u/%u DHCP=%u/%u IP=%u/%u SUB=%u/%u GW=%u/%u DNS=%u/%u NTP=%u/%u\n",
                   (unsigned int)ssidWritten, (unsigned int)wifiSSID.length(),
                   (unsigned int)passWritten, (unsigned int)wifiPassword.length(),
@@ -1071,7 +1109,7 @@ void saveWifiSettings() {
   }
 
   if (!prefs.begin("vending", true)) {
-    Serial.println("Preferences: verify open fehlgeschlagen (WiFi)");
+    Serial.println("Preferences: verify open failed (WiFi)");
     return;
   }
 
@@ -1087,20 +1125,20 @@ void saveWifiSettings() {
   prefs.end();
 
   if (verifyOk) {
-    Serial.println("Preferences: WiFi-Einstellungen gespeichert und verifiziert");
+    Serial.println("Preferences: WiFi settings saved and verified");
   } else {
-    Serial.println("Preferences: WiFi-Verifikation fehlgeschlagen");
+    Serial.println("Preferences: WiFi verification failed");
   }
 }
 
 void saveCoinSettings() {
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, Muenz-Einstellungen nicht gespeichert");
+    Serial.println("NVS not ready, coin settings not saved");
     return;
   }
 
   if (!prefs.begin("vending", false)) {
-    Serial.println("Preferences: write open fehlgeschlagen (Muenzen)");
+    Serial.println("Preferences: write open failed (coins)");
     return;
   }
 
@@ -1123,12 +1161,12 @@ void saveCoinSettings() {
   prefs.end();
 
   if (!allWritten) {
-    Serial.println("Preferences: Muenzwerte konnten nicht vollstaendig geschrieben werden");
+    Serial.println("Preferences: coin values could not be written completely");
     return;
   }
 
   if (!prefs.begin("vending", true)) {
-    Serial.println("Preferences: verify open fehlgeschlagen (Muenzen)");
+    Serial.println("Preferences: verify open failed (coins)");
     return;
   }
 
@@ -1144,20 +1182,20 @@ void saveCoinSettings() {
   prefs.end();
 
   if (verifyOk) {
-    Serial.println("Preferences: Muenzwerte gespeichert und verifiziert");
+    Serial.println("Preferences: coin values saved and verified");
   } else {
-    Serial.println("Preferences: Muenzwerte-Verifikation fehlgeschlagen");
+    Serial.println("Preferences: coin values verification failed");
   }
 }
 
 void saveEmailSettings() {
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, E-Mail-Einstellungen nicht gespeichert");
+    Serial.println("NVS not ready, email settings not saved");
     return;
   }
 
   if (!prefs.begin("vending", false)) {
-    Serial.println("Preferences: write open fehlgeschlagen (E-Mail)");
+    Serial.println("Preferences: write open failed (email)");
     return;
   }
 
@@ -1184,12 +1222,12 @@ void saveEmailSettings() {
     (thresholdWritten == sizeof(uint8_t));
 
   if (!allWritten) {
-    Serial.println("Preferences: E-Mail-Werte konnten nicht vollstaendig geschrieben werden");
+    Serial.println("Preferences: email values could not be written completely");
     return;
   }
 
   if (!prefs.begin("vending", true)) {
-    Serial.println("Preferences: verify open fehlgeschlagen (E-Mail)");
+    Serial.println("Preferences: verify open failed (email)");
     return;
   }
 
@@ -1206,20 +1244,20 @@ void saveEmailSettings() {
   prefs.end();
 
   if (verifyOk) {
-    Serial.println("Preferences: E-Mail-Einstellungen gespeichert und verifiziert");
+    Serial.println("Preferences: email settings saved and verified");
   } else {
-    Serial.println("Preferences: E-Mail-Verifikation fehlgeschlagen");
+    Serial.println("Preferences: email verification failed");
   }
 }
 
 void saveSumupSettings() {
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, SumUp-Einstellungen nicht gespeichert");
+    Serial.println("NVS not ready, SumUp settings not saved");
     return;
   }
 
   if (!prefs.begin("vending", false)) {
-    Serial.println("Preferences: write open fehlgeschlagen (SumUp)");
+    Serial.println("Preferences: write open failed (SumUp)");
     return;
   }
 
@@ -1242,12 +1280,12 @@ void saveSumupSettings() {
     (timeoutWritten == sizeof(uint32_t));
 
   if (!allWritten) {
-    Serial.println("Preferences: SumUp-Werte konnten nicht vollstaendig geschrieben werden");
+    Serial.println("Preferences: SumUp values could not be written completely");
     return;
   }
 
   if (!prefs.begin("vending", true)) {
-    Serial.println("Preferences: verify open fehlgeschlagen (SumUp)");
+    Serial.println("Preferences: verify open failed (SumUp)");
     return;
   }
 
@@ -1262,20 +1300,20 @@ void saveSumupSettings() {
   prefs.end();
 
   if (verifyOk) {
-    Serial.println("Preferences: SumUp-Einstellungen gespeichert und verifiziert");
+    Serial.println("Preferences: SumUp settings saved and verified");
   } else {
-    Serial.println("Preferences: SumUp-Verifikation fehlgeschlagen");
+    Serial.println("Preferences: SumUp verification failed");
   }
 }
 
 void saveLanguageSetting() {
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, Sprache konnte nicht gespeichert werden");
+    Serial.println("NVS not ready, language could not be saved");
     return;
   }
 
   if (!prefs.begin("vending", false)) {
-    Serial.println("Preferences: write open fehlgeschlagen (Sprache)");
+    Serial.println("Preferences: write open failed (language)");
     return;
   }
 
@@ -1284,33 +1322,33 @@ void saveLanguageSetting() {
   prefs.end();
 
   if (written != langCode.length()) {
-    Serial.println("Preferences: Sprache konnte nicht gespeichert werden");
+    Serial.println("Preferences: language could not be saved");
     return;
   }
 
   if (!prefs.begin("vending", true)) {
-    Serial.println("Preferences: verify open fehlgeschlagen (Sprache)");
+    Serial.println("Preferences: verify open failed (language)");
     return;
   }
 
-  bool verifyOk = prefs.getString("lang", "de") == langCode;
+  bool verifyOk = prefs.getString("lang", "en") == langCode;
   prefs.end();
 
   if (verifyOk) {
-    Serial.println("Preferences: Sprache gespeichert und verifiziert");
+    Serial.println("Preferences: language saved and verified");
   } else {
-    Serial.println("Preferences: Sprach-Verifikation fehlgeschlagen");
+    Serial.println("Preferences: language verification failed");
   }
 }
 
 void saveCurrencySetting() {
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, Waehrung konnte nicht gespeichert werden");
+    Serial.println("NVS not ready, currency could not be saved");
     return;
   }
 
   if (!prefs.begin("vending", false)) {
-    Serial.println("Preferences: write open fehlgeschlagen (Waehrung)");
+    Serial.println("Preferences: write open failed (currency)");
     return;
   }
 
@@ -1318,12 +1356,12 @@ void saveCurrencySetting() {
   prefs.end();
 
   if (written != currentCurrency.length()) {
-    Serial.println("Preferences: Waehrung konnte nicht gespeichert werden");
+    Serial.println("Preferences: currency could not be saved");
     return;
   }
 
   if (!prefs.begin("vending", true)) {
-    Serial.println("Preferences: verify open fehlgeschlagen (Waehrung)");
+    Serial.println("Preferences: verify open failed (currency)");
     return;
   }
 
@@ -1331,22 +1369,22 @@ void saveCurrencySetting() {
   prefs.end();
 
   if (verifyOk) {
-    Serial.println("Preferences: Waehrung gespeichert und verifiziert");
+    Serial.println("Preferences: currency saved and verified");
   } else {
-    Serial.println("Preferences: Waehrungs-Verifikation fehlgeschlagen");
+    Serial.println("Preferences: currency verification failed");
   }
 }
 
 void saveProductShaftSettings() {
   if (!ensureNvsReady()) {
-    Serial.println("NVS nicht bereit, Schacht-Einstellungen nicht gespeichert");
+    Serial.println("NVS not ready, shaft settings not saved");
     return;
   }
 
   normalizeProductShaftLayout();
 
   if (!prefs.begin("vending", false)) {
-    Serial.println("Preferences: write open fehlgeschlagen (Schaechte)");
+    Serial.println("Preferences: write open failed (shafts)");
     return;
   }
 
@@ -1384,12 +1422,12 @@ void saveProductShaftSettings() {
   prefs.end();
 
   if (!allWritten) {
-    Serial.println("Preferences: Schachtwerte konnten nicht vollstaendig geschrieben werden");
+    Serial.println("Preferences: shaft values could not be written completely");
     return;
   }
 
   if (!prefs.begin("vending", true)) {
-    Serial.println("Preferences: verify open fehlgeschlagen (Schaechte)");
+    Serial.println("Preferences: verify open failed (shafts)");
     return;
   }
 
@@ -1429,9 +1467,9 @@ void saveProductShaftSettings() {
   prefs.end();
 
   if (verifyOk) {
-    Serial.println("Preferences: Schachtwerte gespeichert und verifiziert");
+    Serial.println("Preferences: shaft values saved and verified");
   } else {
-    Serial.println("Preferences: Schachtwerte-Verifikation fehlgeschlagen");
+    Serial.println("Preferences: shaft values verification failed");
   }
 }
 
@@ -1816,7 +1854,7 @@ bool initSdCard() {
 
   for (int i = 0; i < sdFrequencyCount; i++) {
     uint32_t frequency = sdFrequencies[i];
-    Serial.printf("SD: Initialisiere ueber SPI mit %lu Hz (SCK=%d MISO=%d MOSI=%d CS=%d)\n",
+    Serial.printf("SD: initializing over SPI at %lu Hz (SCK=%d MISO=%d MOSI=%d CS=%d)\n",
                   (unsigned long)frequency, sdCardSckPin, sdCardMisoPin, sdCardMosiPin, sdCardCsPin);
 
     if (SD.begin(sdCardCsPin, sdCardSpi, frequency)) {
@@ -1824,7 +1862,7 @@ bool initSdCard() {
       break;
     }
 
-    Serial.println("SD: Init fehlgeschlagen, versuche naechste Frequenz");
+    Serial.println("SD: init failed, trying next frequency");
     SD.end();
     delay(30);
   }
@@ -1844,7 +1882,7 @@ bool initSdCard() {
   }
 
   uint64_t cardSizeMb = SD.cardSize() / (1024ULL * 1024ULL);
-  Serial.printf("SD: Karte erkannt, Typ=%u, Groesse=%llu MB\n",
+  Serial.printf("SD: card detected, type=%u, size=%llu MB\n",
                 (unsigned int)cardType,
                 (unsigned long long)cardSizeMb);
   sdCardStatusMessage = lang("SD Karte bereit.", "SD card ready.") + " " + String((unsigned long)cardSizeMb) + " MB";
@@ -1865,21 +1903,21 @@ void syncClockWithNtp() {
   struct tm timeinfo;
   if (getLocalTime(&timeinfo, 5000)) {
     timeSynced = true;
-    Serial.println("Zeit per NTP synchronisiert");
+    Serial.println("Time synchronized via NTP");
   } else {
     timeSynced = false;
-    Serial.println("NTP Zeitsynchronisation fehlgeschlagen");
+    Serial.println("NTP time synchronization failed");
   }
 }
 
 String getCurrentTimestamp() {
   if (!timeSynced) {
-    return "Zeit unbekannt";
+    return "Time unknown";
   }
 
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo, 1000)) {
-    return "Zeit unbekannt";
+    return "Time unknown";
   }
 
   char buffer[24];
@@ -2333,7 +2371,7 @@ String keyMapFor(char key, TextCharSet setMode) {
   switch (setMode) {
     case TEXTSET_UPPER:
       switch (key) {
-        case '0': return "0";
+        case '0': return " 0";
         case '1': return "1.-_";
         case '2': return "ABC2";
         case '3': return "DEF3";
@@ -2349,7 +2387,7 @@ String keyMapFor(char key, TextCharSet setMode) {
 
     case TEXTSET_LOWER:
       switch (key) {
-        case '0': return "0";
+        case '0': return " 0";
         case '1': return "1.-_";
         case '2': return "abc2";
         case '3': return "def3";
@@ -2381,7 +2419,7 @@ String keyMapFor(char key, TextCharSet setMode) {
 
     case TEXTSET_SYM:
       switch (key) {
-        case '0': return "0@";
+        case '0': return " 0@";
         case '1': return ".-_/";
         case '2': return "#$%&";
         case '3': return "*+=\"";
@@ -2602,17 +2640,17 @@ void stopWifiCompletely() {
 
 void reconnectWifiAfterSettingsSave(const char* source) {
   wifiSkipThisBoot = false;
-  Serial.println(String("WiFi: Einstellungen gespeichert ueber ") + source);
+  Serial.println(String("WiFi: settings saved via ") + source);
 
   if (wifiSSID.length() == 0) {
-    Serial.println("WiFi: SSID leer, WLAN wird deaktiviert");
+    Serial.println("WiFi: SSID empty, WiFi will be disabled");
     stopWifiCompletely();
     return;
   }
 
   lastWifiAttemptMs = millis() - wifiRetryIntervalMs;
-  wifiStatusMessage = "WiFi wird neu verbunden";
-  Serial.println("WiFi: Starte Verbindungsversuch nach dem Speichern");
+  wifiStatusMessage = "WiFi reconnecting";
+  Serial.println("WiFi: starting reconnect after saving settings");
   applyWifiConfig();
 }
 
@@ -2634,41 +2672,41 @@ void applyWifiConfig() {
 #if !VM_ENABLE_WIFI
   wifiConnected = false;
   wifiStackInitialized = false;
-  wifiStatusMessage = "WiFi per Build aus";
+  wifiStatusMessage = "WiFi disabled by build";
   timeSynced = false;
   lastWifiAttemptMs = millis();
-  Serial.println("WiFi: per Build-Flag deaktiviert");
+  Serial.println("WiFi: disabled by build flag");
   return;
 #else
   if (wifiSkipThisBoot) {
     wifiConnected = false;
-    wifiStatusMessage = "WiFi pausiert";
+    wifiStatusMessage = "WiFi paused";
     timeSynced = false;
     lastWifiAttemptMs = millis();
-    Serial.println("WiFi: Nach Reset voruebergehend pausiert");
+    Serial.println("WiFi: temporarily paused after reset");
     return;
   }
 
   if (wifiSSID.length() == 0) {
     stopWifiCompletely();
-    Serial.println("WiFi: Keine SSID gesetzt, kein Verbindungsversuch");
+    Serial.println("WiFi: no SSID configured, not attempting connection");
     return;
   }
 
-  Serial.println("WiFi: Stack vorbereiten");
+  Serial.println("WiFi: preparing stack");
   WiFi.persistent(false);
   Serial.println("WiFi: persistent(false) ok");
   wifiStackInitialized = true;
   WiFi.setSleep(false);
-  Serial.println("WiFi: Sleep deaktiviert");
+  Serial.println("WiFi: sleep disabled");
   delay(50);
-  Serial.println("WiFi: Trenne vorherige Verbindung");
+  Serial.println("WiFi: disconnecting previous connection");
   WiFi.disconnect(true, false);
-  Serial.println("WiFi: Vorherige Verbindung getrennt");
+  Serial.println("WiFi: previous connection closed");
   delay(150);
 
   if (wifiDhcp) {
-    Serial.println("WiFi: DHCP aktiviert");
+    Serial.println("WiFi: DHCP enabled");
   } else {
     IPAddress ip, gateway, subnet, dns;
     bool ok =
@@ -2679,27 +2717,27 @@ void applyWifiConfig() {
 
     if (!ok) {
       wifiConnected = false;
-      wifiStatusMessage = "Manuelle IP ung";
+      wifiStatusMessage = "Manual IP invalid";
       lastWifiAttemptMs = millis();
-      Serial.println("WiFi: Ungueltige manuelle Netzwerkeinstellungen");
+      Serial.println("WiFi: invalid manual network settings");
       return;
     }
 
     if (!WiFi.config(ip, gateway, subnet, dns)) {
       wifiConnected = false;
-      wifiStatusMessage = "Config fehlg.";
+      wifiStatusMessage = "Config failed";
       lastWifiAttemptMs = millis();
-      Serial.println("WiFi: WiFi.config fehlgeschlagen");
+      Serial.println("WiFi: WiFi.config failed");
       return;
     }
   }
 
-  Serial.println("WiFi: Verbinde mit SSID: " + wifiSSID);
-  Serial.println("WiFi: Modus " + String(wifiDhcp ? "DHCP" : "statische IP"));
+  Serial.println("WiFi: connecting to SSID: " + wifiSSID);
+  Serial.println("WiFi: mode " + String(wifiDhcp ? "DHCP" : "static IP"));
   if (!wifiDhcp) {
-    Serial.println("WiFi: Statische IP " + wifiManualIp);
+    Serial.println("WiFi: static IP " + wifiManualIp);
     Serial.println("WiFi: Gateway " + wifiGateway);
-    Serial.println("WiFi: Subnetz " + wifiSubnet);
+    Serial.println("WiFi: subnet " + wifiSubnet);
     Serial.println("WiFi: DNS " + wifiDns);
   }
 
@@ -2707,7 +2745,7 @@ void applyWifiConfig() {
 
   unsigned long startMs = millis();
   wl_status_t lastStatus = WiFi.status();
-  Serial.println(String("WiFi: Initialer Status ") + wifiStatusToText(lastStatus));
+  Serial.println(String("WiFi: initial status ") + wifiStatusToText(lastStatus));
 
   while (WiFi.status() != WL_CONNECTED && millis() - startMs < 15000) {
     delay(250);
@@ -2715,7 +2753,7 @@ void applyWifiConfig() {
     wl_status_t currentStatus = WiFi.status();
     if (currentStatus != lastStatus) {
       Serial.println();
-      Serial.println(String("WiFi: Statuswechsel -> ") + wifiStatusToText(currentStatus));
+      Serial.println(String("WiFi: status change -> ") + wifiStatusToText(currentStatus));
       lastStatus = currentStatus;
     }
   }
@@ -2725,21 +2763,21 @@ void applyWifiConfig() {
   if (finalStatus == WL_CONNECTED) {
     wifiConnected = true;
     wifiStatusMessage = WiFi.localIP().toString();
-    Serial.println("WiFi verbunden");
+    Serial.println("WiFi connected");
     Serial.println("IP: " + WiFi.localIP().toString());
-    Serial.println("Gateway aktiv: " + WiFi.gatewayIP().toString());
-    Serial.println("Subnetz aktiv: " + WiFi.subnetMask().toString());
-    Serial.println("DNS aktiv: " + WiFi.dnsIP().toString());
+    Serial.println("Active gateway: " + WiFi.gatewayIP().toString());
+    Serial.println("Active subnet: " + WiFi.subnetMask().toString());
+    Serial.println("Active DNS: " + WiFi.dnsIP().toString());
     syncClockWithNtp();
     if (!webServerStarted) {
       setupWebServer();
     }
   } else {
     wifiConnected = false;
-    wifiStatusMessage = "Verb. fehlges.";
+    wifiStatusMessage = "Connect failed";
     timeSynced = false;
-    Serial.println(String("WiFi Verbindung fehlgeschlagen, Status: ") + wifiStatusToText(finalStatus));
-    Serial.println("WiFi: Bitte SSID, Passwort und Router-2.4GHz-Einstellungen pruefen");
+    Serial.println(String("WiFi connection failed, status: ") + wifiStatusToText(finalStatus));
+    Serial.println("WiFi: please check SSID, password, and 2.4 GHz router settings");
   }
 
   lastWifiAttemptMs = millis();
@@ -2790,10 +2828,10 @@ void processCoinSignal() {
       coinLastAcceptedPulseMs = nowMs;
       coinPulseCount++;
       coinBurstActive = true;
-      Serial.printf("Coin pulse akzeptiert: width=%lu ms count=%u\n",
+      Serial.printf("Coin pulse accepted: width=%lu ms count=%u\n",
                     pulseWidthMs, coinPulseCount);
     } else {
-      Serial.printf("Coin pulse verworfen: width=%lu ms\n", pulseWidthMs);
+      Serial.printf("Coin pulse rejected: width=%lu ms\n", pulseWidthMs);
     }
   }
 }
@@ -2815,10 +2853,10 @@ void processCoinPulseBurst() {
     creditCents += slotValue;
     lastCoinPulseCount = pulses;
     lastCoinValueCents = slotValue;
-    Serial.printf("Muenze erkannt: %u Pulse, Wert %u Cent, Guthaben %lu Cent, letzter Abstand %lu us\n",
+    Serial.printf("Coin detected: %u pulses, value %u cents, credit %lu cents, last interval %lu us\n",
                   pulses, slotValue, (unsigned long)creditCents, (unsigned long)coinLastPulseIntervalUs);
   } else {
-    Serial.printf("Unbekannte Pulsfolge: %u Pulse, letzter Abstand %lu us\n",
+    Serial.printf("Unknown pulse sequence: %u pulses, last interval %lu us\n",
                   pulses, (unsigned long)coinLastPulseIntervalUs);
   }
 
@@ -2829,7 +2867,7 @@ void refreshNormalScreenIfNeeded() {
   if (creditCents == lastDisplayedCreditCents) return;
 
   showNormalScreen();
-  Serial.println("LCD aktualisiert nach Guthaben-Aenderung");
+  Serial.println("LCD refreshed after credit change");
 }
 
 // =====================================================
@@ -2837,7 +2875,7 @@ void refreshNormalScreenIfNeeded() {
 // =====================================================
 void setupMotorControllerBus() {
   motorControllerBus.begin(motorControllerBaud, SERIAL_8N1, motorControllerRxPin, motorControllerTxPin);
-  Serial.println("Motor-ESP UART gestartet");
+  Serial.println("Motor ESP UART started");
   Serial.println("Motor-ESP UART RX: GPIO " + String(motorControllerRxPin));
   Serial.println("Motor-ESP UART TX: GPIO " + String(motorControllerTxPin));
   delay(50);
@@ -2884,7 +2922,7 @@ void handleMotorControllerEvent(const String& line) {
     motorControllerReady = true;
   }
   lastMotorControllerMessage = line;
-  Serial.println("Motor-ESP Event: " + line);
+  Serial.println("Motor ESP event: " + line);
 }
 
 bool transactMotorController(const String& command, String& payloadOut, uint32_t timeoutMs) {
@@ -2893,7 +2931,7 @@ bool transactMotorController(const String& command, String& payloadOut, uint32_t
 
     String requestId = String(motorControllerNextRequestId++);
     String frame = "@" + requestId + " " + command;
-    Serial.println("Motor-ESP TX: " + frame);
+    Serial.println("Motor ESP TX: " + frame);
     motorControllerBus.println(frame);
 
     unsigned long startMs = millis();
@@ -2910,7 +2948,7 @@ bool transactMotorController(const String& command, String& payloadOut, uint32_t
       }
 
       if (!line.startsWith("@")) {
-        Serial.println("Motor-ESP RX ignoriert: " + line);
+        Serial.println("Motor ESP RX ignored: " + line);
         continue;
       }
 
@@ -2921,7 +2959,7 @@ bool transactMotorController(const String& command, String& payloadOut, uint32_t
 
       String responseId = line.substring(1, firstSpace);
       if (responseId != requestId) {
-        Serial.println("Motor-ESP RX fuer andere Anfrage: " + line);
+        Serial.println("Motor ESP RX for other request: " + line);
         continue;
       }
 
@@ -2931,25 +2969,25 @@ bool transactMotorController(const String& command, String& payloadOut, uint32_t
       String payload = statusSplit >= 0 ? rest.substring(statusSplit + 1) : "";
       payload.trim();
 
-      Serial.println("Motor-ESP RX: " + line);
+      Serial.println("Motor ESP RX: " + line);
       payloadOut = payload;
       lastMotorControllerMessage = line;
       if (status == "OK") {
         return true;
       }
       if (payloadOut.length() == 0) {
-        payloadOut = "Motor-ESP Fehler";
+        payloadOut = "Motor ESP error";
       }
       return false;
     }
 
     if (attempt == 0) {
-      Serial.println("Motor-ESP Timeout, wiederhole Anfrage einmal");
+      Serial.println("Motor ESP timeout, retrying once");
       delay(100);
     }
   }
 
-  payloadOut = "Motor-ESP Timeout";
+  payloadOut = "Motor ESP timeout";
   lastMotorControllerMessage = payloadOut;
   Serial.println(payloadOut);
   return false;
@@ -2964,7 +3002,7 @@ void processMotorControllerBus() {
     if (line.startsWith("!")) {
       handleMotorControllerEvent(line);
     } else if (line.length() > 0) {
-      Serial.println("Motor-ESP RX asynchron: " + line);
+      Serial.println("Motor ESP RX async: " + line);
       lastMotorControllerMessage = line;
     }
   }
@@ -5639,7 +5677,8 @@ void setup() {
 
   esp_reset_reason_t resetReason = esp_reset_reason();
   Serial.println();
-  Serial.println("Boot gestartet");
+  printBootBanner();
+  Serial.println("Boot started");
   Serial.printf("Reset Reason: %s (%d)\n", getResetReasonText(resetReason), (int)resetReason);
   Serial.flush();
 
@@ -5654,17 +5693,18 @@ void setup() {
     if (lcdStatus == 0) {
       lcd.backlight();
       lcdAvailable = true;
-      Serial.println("LCD initialisiert");
+      Serial.println("LCD initialized");
+      showBootSplash();
       logBootStep("LCD init ok");
     } else {
       lcdAvailable = false;
-      Serial.printf("LCD Init Fehler: %d\n", lcdStatus);
+      Serial.printf("LCD init error: %d\n", lcdStatus);
       logBootStep("LCD init failed");
     }
   } else {
     lcdAvailable = false;
-    Serial.println(VM_ENABLE_LCD ? "LCD nicht gefunden, ueberspringe Initialisierung"
-                                 : "LCD per Build-Flag deaktiviert");
+    Serial.println(VM_ENABLE_LCD ? "LCD not found, skipping initialization"
+                                 : "LCD disabled by build flag");
     logBootStep("LCD init skipped");
   }
 
@@ -5676,15 +5716,15 @@ void setup() {
   logBootStep("loadSettings start");
   loadSettings();
   logBootStep("loadSettings ok");
-  Serial.println("Settings geladen aus Preferences");
-  Serial.println("Admin PIN Laenge: " + String(adminPin.length()));
+  Serial.println("Settings loaded from Preferences");
+  Serial.println("Admin PIN length: " + String(adminPin.length()));
 
   if (keypadNeedsSetup) {
-    Serial.println("Keypad: keine gespeicherte Zuordnung gefunden, starte Setup");
+    Serial.println("Keypad: no stored mapping found, starting setup");
     if (lcdAvailable) {
       runInitialKeypadSetup();
     } else {
-      Serial.println("Keypad Setup uebersprungen: LCD nicht verfuegbar");
+      Serial.println("Keypad setup skipped: LCD not available");
     }
   }
 
@@ -5694,7 +5734,7 @@ void setup() {
        resetReason == ESP_RST_INT_WDT ||
        resetReason == ESP_RST_TASK_WDT ||
        resetReason == ESP_RST_WDT)) {
-    Serial.println("Hinweis: Crash-/Watchdog-Reset erkannt, WLAN-Start bleibt trotzdem aktiv");
+    Serial.println("Note: crash/watchdog reset detected, WiFi startup remains enabled");
   }
 
   logBootStep("GPIO init start");
@@ -5709,7 +5749,7 @@ void setup() {
   if (wifiSSID.length() > 0) {
     wifiConnectPending = true;
     lastWifiAttemptMs = millis() - wifiRetryIntervalMs;
-    Serial.println("WiFi: Start nach setup eingeplant");
+    Serial.println("WiFi: startup scheduled after setup");
   } else {
     stopWifiCompletely();
   }
@@ -5718,31 +5758,32 @@ void setup() {
   logBootStep("UI init start");
   showNormalScreen();
   logBootStep("UI init ok");
+  blinkBootSuccessLed();
 
-  Serial.println("System gestartet");
+  Serial.println("System started");
   Serial.println("SSID: " + wifiSSID);
-  Serial.println("DHCP: " + String(wifiDhcp ? "Ja" : "Nein"));
+  Serial.println("DHCP: " + String(wifiDhcp ? "Yes" : "No"));
   if (wifiDhcp) {
-    Serial.println("Netzwerkmodus: DHCP");
+    Serial.println("Network mode: DHCP");
     if (wifiConnected) {
-      Serial.println("Aktive IP: " + WiFi.localIP().toString());
-      Serial.println("Aktives Gateway: " + WiFi.gatewayIP().toString());
-      Serial.println("Aktives Subnetz: " + WiFi.subnetMask().toString());
-      Serial.println("Aktiver DNS: " + WiFi.dnsIP().toString());
+      Serial.println("Active IP: " + WiFi.localIP().toString());
+      Serial.println("Active gateway: " + WiFi.gatewayIP().toString());
+      Serial.println("Active subnet: " + WiFi.subnetMask().toString());
+      Serial.println("Active DNS: " + WiFi.dnsIP().toString());
     } else {
-      Serial.println("Aktive IP: noch nicht bezogen");
+      Serial.println("Active IP: not assigned yet");
     }
   } else {
-    Serial.println("Netzwerkmodus: statisch");
-    Serial.println("Konfig IP: " + wifiManualIp);
-    Serial.println("Konfig Subnetz: " + wifiSubnet);
-    Serial.println("Konfig Gateway: " + wifiGateway);
-    Serial.println("Konfig DNS: " + wifiDns);
+    Serial.println("Network mode: static");
+    Serial.println("Configured IP: " + wifiManualIp);
+    Serial.println("Configured subnet: " + wifiSubnet);
+    Serial.println("Configured gateway: " + wifiGateway);
+    Serial.println("Configured DNS: " + wifiDns);
   }
   Serial.println("NTP: " + wifiNtpServer);
-  Serial.println("E-Mail aktiv: " + String(emailNotifyEnabled ? "Ja" : "Nein"));
-  Serial.println("E-Mail Protokoll: " + emailProtocol);
-  Serial.println("E-Mail Host: " + emailHost + ":" + String(emailPort));
+  Serial.println("Email enabled: " + String(emailNotifyEnabled ? "Yes" : "No"));
+  Serial.println("Email protocol: " + emailProtocol);
+  Serial.println("Email host: " + emailHost + ":" + String(emailPort));
   Serial.println("Coin Pulse Pin: GPIO " + String(coinPulsePin));
   Serial.println("Motor-ESP UART RX: GPIO " + String(motorControllerRxPin));
   Serial.println("Motor-ESP UART TX: GPIO " + String(motorControllerTxPin));
@@ -5750,7 +5791,7 @@ void setup() {
   Serial.println("SD SPI MOSI: GPIO " + String(sdCardMosiPin));
   Serial.println("SD SPI MISO: GPIO " + String(sdCardMisoPin));
   Serial.println("SD SPI CS: GPIO " + String(sdCardCsPin));
-  Serial.println("SD Status: " + sdCardStatusMessage);
+  Serial.println("SD status: " + sdCardStatusMessage);
 }
 
 void loop() {
@@ -5760,7 +5801,7 @@ void loop() {
 
   if (wifiConnectPending) {
     wifiConnectPending = false;
-    Serial.println("WiFi: Fuehre initialen Verbindungsaufbau in loop aus");
+    Serial.println("WiFi: performing initial connection attempt in loop");
     applyWifiConfig();
   }
 
