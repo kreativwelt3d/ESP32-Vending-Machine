@@ -21,7 +21,6 @@ Kurzanleitung Flashen:
 4. Dateien mit diesen Offsets flashen: `bootloader.bin -> 0x0`, `partitions.bin -> 0x8000`, `boot_app0.bin -> 0xE000`, `firmware.bin -> 0x10000`.
 5. Nach dem Flashen den ESP neu starten und den ersten Setup-Dialog auf dem LCD durchlaufen.
 
-![Flashing instructions](images/flashing_instructions.png)
 
 Quick flash guide:
 
