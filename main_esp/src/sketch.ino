@@ -238,42 +238,14 @@ int sumupPendingVendShaftIndex = -1;
 unsigned long sumupPendingStartedMs = 0;
 unsigned long sumupNextPollMs = 0;
 
-// Stepper / A4988
+// Motor slots / UART motor controller
 const int stepperMotorCount = 24;
 const uint16_t stepperTestDefaultSteps = 200;
 const uint16_t stepperTestMaxSteps = 6400;
 const uint16_t stepperTestDefaultPulseUs = 800;
 const uint16_t stepperTestMinPulseUs = 100;
 const uint16_t stepperTestMaxPulseUs = 5000;
-const uint8_t motorControllerStepPinDefault = 4;
-const uint8_t motorControllerStepPinAllowed[] = {1, 2, 3, 4};
-const uint8_t motorControllerEnablePins[stepperMotorCount] = {
-  5,   // Motor 1
-  6,   // Motor 2
-  7,   // Motor 3
-  8,   // Motor 4
-  9,   // Motor 5
-  10,  // Motor 6
-  11,  // Motor 7
-  12,  // Motor 8
-  13,  // Motor 9
-  14,  // Motor 10
-  17,  // Motor 11
-  18,  // Motor 12
-  1,   // Motor 13
-  2,   // Motor 14
-  38,  // Motor 15
-  39,  // Motor 16
-  40,  // Motor 17
-  41,  // Motor 18
-  42,  // Motor 19
-  47,  // Motor 20
-  48,  // Motor 21
-  19,  // Motor 22
-  20,  // Motor 23
-  3    // Motor 24
-};
-uint8_t motorControllerStepPin = motorControllerStepPinDefault;
+const uint8_t motorControllerStepPin = 4;
 String lastMotorTestMessage = "";
 const unsigned long doorLockSignalMs = 5000;
 const int productShaftMaxCount = stepperMotorCount;
@@ -361,7 +333,6 @@ bool runStepperMotorTest(int motorIndex, uint16_t steps, uint16_t pulseUs);
 bool runProductShaftEject(int shaftIndex, uint16_t steps, uint16_t pulseUs);
 bool isSupportedProductShaftMicrostep(uint8_t microsteps);
 uint16_t getConfiguredProductShaftEjectSteps();
-bool isValidMotorControllerStepPin(uint8_t pin);
 void syncProductShaftCountFromRows();
 void normalizeProductShaftLayout();
 uint8_t getProductShaftActiveRowCount();
@@ -418,7 +389,6 @@ void handleShaftAddPost();
 void handleShaftAddRowPost();
 void handleShaftRemovePost();
 void handleShaftRemoveRowPost();
-void handleMotorStepPinPost();
 const char* getResetReasonText(esp_reset_reason_t reason);
 void logBootStep(const char* step);
 String getPrefStringOrDefault(const char* key, const String& defaultValue);
@@ -464,11 +434,7 @@ const unsigned long comboWindowMs = 400;
 
 void printBootBanner() {
   Serial.println();
-  Serial.println(" __      __             _ _             ___  ____ ");
-  Serial.println(" \\ \\    / /__ _ _  __ _(_|_)_ _  __ _  / _ \\/ ___|");
-  Serial.println("  \\ \\/\\/ / -_) ' \\/ _` | | | ' \\/ _` || | | \\___ \\");
-  Serial.println("   \\_/\\_/\\___|_||_\\__,_|_|_|_||_\\__, || |_| |___) |");
-  Serial.println("                                |___/  \\___/|____/ ");
+  Serial.println("Starting Vending OS");
   Serial.println(" Version: " FW_VERSION);
   Serial.println();
 }
@@ -1034,10 +1000,6 @@ void loadSettings() {
     if (!isSupportedProductShaftMicrostep(productShaftMicrosteps)) {
       productShaftMicrosteps = productShaftMicrostepDefault;
     }
-    motorControllerStepPin = getPrefUCharOrDefault("mcStepPin", motorControllerStepPinDefault);
-    if (!isValidMotorControllerStepPin(motorControllerStepPin)) {
-      motorControllerStepPin = motorControllerStepPinDefault;
-    }
     prefs.end();
   }
 
@@ -1409,8 +1371,7 @@ void saveProductShaftSettings() {
   bool allWritten = true;
   size_t countWritten = prefs.putUChar("shaftCnt", productShaftCount);
   size_t microstepsWritten = prefs.putUChar("shaftMicro", productShaftMicrosteps);
-  size_t stepPinWritten = prefs.putUChar("mcStepPin", motorControllerStepPin);
-  if (countWritten != sizeof(uint8_t) || microstepsWritten != sizeof(uint8_t) || stepPinWritten != sizeof(uint8_t)) {
+  if (countWritten != sizeof(uint8_t) || microstepsWritten != sizeof(uint8_t)) {
     allWritten = false;
   }
   for (int row = 0; row < productShaftMaxRowCount; row++) {
@@ -1454,9 +1415,6 @@ void saveProductShaftSettings() {
     verifyOk = false;
   }
   if (prefs.getUChar("shaftMicro", 0) != productShaftMicrosteps) {
-    verifyOk = false;
-  }
-  if (prefs.getUChar("mcStepPin", 0) != motorControllerStepPin) {
     verifyOk = false;
   }
   for (int row = 0; row < productShaftMaxRowCount; row++) {
@@ -1641,20 +1599,6 @@ uint16_t getConfiguredProductShaftEjectSteps() {
     return 65535;
   }
   return (uint16_t)steps;
-}
-
-bool isValidMotorControllerStepPin(uint8_t pin) {
-  const int allowedCount = sizeof(motorControllerStepPinAllowed) / sizeof(motorControllerStepPinAllowed[0]);
-  bool allowed = false;
-  for (int i = 0; i < allowedCount; i++) {
-    if (motorControllerStepPinAllowed[i] == pin) {
-      allowed = true;
-      break;
-    }
-  }
-  if (!allowed) return false;
-  if (pin == (uint8_t)motorControllerRxPin || pin == (uint8_t)motorControllerTxPin || pin == (uint8_t)coinPulsePin) return false;
-  return true;
 }
 
 void syncProductShaftCountFromRows() {
@@ -3627,7 +3571,6 @@ void handleRoot() {
   html += "<p><span class='label'>Firmware:</span> " + String(FW_VERSION) + "</p>";
   html += "<p><span class='label'>Motor-ESP UART:</span> RX GPIO " + String(motorControllerRxPin) +
           ", TX GPIO " + String(motorControllerTxPin) + "</p>";
-  html += "<p><span class='label'>Motor-ESP STEP:</span> GPIO " + String(motorControllerStepPin) + "</p>";
   html += "<p><span class='label'>Motor-ESP:</span> " + escapeHtml(lastMotorControllerMessage.length() > 0 ? lastMotorControllerMessage : lang("noch keine Rueckmeldung", "no response yet")) + "</p>";
   html += "<p><span class='label'>" + lang("Muenz-Puls Pin:", "Coin-pulse pin:") + "</span> GPIO " + String(coinPulsePin) + "</p>";
   html += "<p><span class='label'>SD SPI:</span> SCK GPIO " + String(sdCardSckPin) +
@@ -4202,24 +4145,12 @@ void handleTestsPage() {
           ", TX GPIO " + String(motorControllerTxPin) + "</p>";
   html += "<p class='hint'>" + lang("Die Tests werden per UART an den Motor-ESP uebergeben.",
                                       "Tests are sent over UART to the motor ESP.") + "</p>";
-  html += "<div class='section-card'>";
-  html += "<h3>" + lang("Motor-ESP STEP Pin", "Motor ESP STEP pin") + "</h3>";
-  html += "<p class='hint'>" + lang("Der konfigurierte STEP Pin wird bei jedem RUN/TEST Befehl mitgesendet.",
-                                     "The configured STEP pin is sent with every RUN/TEST command.") + "</p>";
-  html += "<p class='hint'>" + lang("Erlaubte GPIOs: 1, 2, 3, 4", "Allowed GPIOs: 1, 2, 3, 4") + "</p>";
-  html += "<form method='POST' action='/tests/steppin'>";
-  html += "<div class='row'><label class='label' for='steppin'>" + lang("STEP GPIO", "STEP GPIO") + "</label>";
-  html += "<input id='steppin' name='steppin' value='" + String(motorControllerStepPin) + "'></div>";
-  html += "<div class='row'><button type='submit'>" + lang("STEP Pin speichern", "Save STEP pin") + "</button></div>";
-  html += "</form>";
-  html += "</div>";
   html += "<p class='inline-note'>" + getLastMotorTestMessage() + "</p>";
   html += "<div class='grid'>";
 
   for (int i = 0; i < stepperMotorCount; i++) {
     html += "<div class='motor-card'>";
     html += "<h3>Motor " + String(i + 1) + "</h3>";
-    html += "<p class='hint'>Motor-ESP ENABLE: GPIO " + String(motorControllerEnablePins[i]) + "</p>";
     html += "<form method='POST' action='/tests/motor'>";
     html += "<input type='hidden' name='motor' value='" + String(i + 1) + "'>";
     html += "<div class='row'><label class='label' for='steps" + String(i + 1) + "'>" + lang("Schritte", "Steps") + "</label>";
@@ -4889,35 +4820,6 @@ void handleShaftRemoveRowPost() {
   redirectTo("/shafts");
 }
 
-void handleMotorStepPinPost() {
-  if (!isWebAuthenticated()) {
-    redirectTo("/");
-    return;
-  }
-
-  if (!server.hasArg("steppin")) {
-    server.send(400, "text/plain; charset=utf-8", "Feld steppin ist erforderlich.");
-    return;
-  }
-
-  uint16_t stepPinValue = 0;
-  if (!parseUnsigned16(server.arg("steppin"), 0, 48, stepPinValue)) {
-    server.send(400, "text/plain; charset=utf-8", "Ungueltiger STEP GPIO.");
-    return;
-  }
-
-  uint8_t newStepPin = (uint8_t)stepPinValue;
-  if (!isValidMotorControllerStepPin(newStepPin)) {
-    server.send(400, "text/plain; charset=utf-8", "STEP GPIO nicht erlaubt. Erlaubt: 1, 2, 3, 4.");
-    return;
-  }
-
-  motorControllerStepPin = newStepPin;
-  saveProductShaftSettings();
-  lastMotorTestMessage = lang("STEP Pin gespeichert. Neuer Wert: GPIO ", "STEP pin saved. New value: GPIO ") + String(motorControllerStepPin);
-  redirectTo("/tests");
-}
-
 void handleLoginPost() {
   if (!server.hasArg("pin")) {
     handleWebLoginPage("PIN fehlt.");
@@ -4979,7 +4881,6 @@ void setupWebServer() {
   server.on("/shafts/remove", HTTP_POST, handleShaftRemovePost);
   server.on("/shafts/removerow", HTTP_POST, handleShaftRemoveRowPost);
   server.on("/tests/motor", HTTP_POST, handleMotorTestPost);
-  server.on("/tests/steppin", HTTP_POST, handleMotorStepPinPost);
   server.onNotFound(handleNotFound);
 
   server.begin();
