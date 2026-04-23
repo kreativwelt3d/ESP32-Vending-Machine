@@ -473,6 +473,24 @@ void printBootBanner() {
   Serial.println();
 }
 
+void scanI2cBus() {
+  uint8_t foundCount = 0;
+  Serial.println("I2C scan start");
+  for (uint8_t address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    uint8_t error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.printf("I2C device found at 0x%02X\n", address);
+      foundCount++;
+    }
+  }
+  if (foundCount == 0) {
+    Serial.println("I2C scan: no devices found");
+  } else {
+    Serial.printf("I2C scan complete, %u device(s) found\n", foundCount);
+  }
+}
+
 void setBootRgbColor(uint8_t r, uint8_t g, uint8_t b) {
 #if defined(RGB_BUILTIN)
   neopixelWrite(RGB_BUILTIN, r, g, b);
@@ -5686,6 +5704,7 @@ void setup() {
   Wire.begin(8, 9);
   Wire.setTimeOut(50);
   logBootStep("Wire.begin ok");
+  scanI2cBus();
 
   logBootStep("LCD init start");
   if (VM_ENABLE_LCD) {
