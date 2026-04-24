@@ -43,7 +43,7 @@
 // =====================================================
 // Grundeinstellungen
 // =====================================================
-#define FW_VERSION "1.6.2"
+#define FW_VERSION "1.6.7"
 
 hd44780_I2Cexp lcd;
 bool lcdAvailable = false;
