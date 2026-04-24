@@ -18,8 +18,7 @@ Der Motor-ESP uebernimmt:
 - Magnetschloss
 - UART-Kommunikation mit dem Haupt-ESP
 
-<img src="../images/DRV8825_setup.jpg" width="300"/>   
-<img src="../images/wiring_steppers.jpg" width="300"/> 
+<img src="../images/DRV8825_setup.jpg" width="400"/> <img src="../images/wiring_steppers.jpg" width="400"/> 
 
 ![Motor ESP wiring](../images/motorESP_wiring.jpg)
 
@@ -111,8 +110,7 @@ The motor ESP handles:
 - magnetic lock
 - UART communication with the main ESP
 
-<img src="../images/DRV8825_setup.jpg" width="300"/>   
-<img src="../images/wiring_steppers.jpg" width="300"/> 
+<img src="../images/DRV8825_setup.jpg" width="400"/> <img src="../images/wiring_steppers.jpg" width="400"/> 
 
 ![Motor ESP wiring](../images/motorESP_wiring.jpg)
 
