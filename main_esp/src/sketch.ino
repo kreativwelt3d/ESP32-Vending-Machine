@@ -224,6 +224,7 @@ bool pendingCashlessSelection = false;
 int pendingCashlessShaftIndex = -1;
 bool pendingSumupTopupSelection = false;
 bool sumupEnabled = false;
+const char* defaultSumupServerUrl = "https://sumup.kreativwelt3d.de/";
 String sumupServerUrl = "";
 String sumupApiToken = "";
 String sumupMachineId = "";
@@ -355,6 +356,8 @@ uint32_t getPendingCashlessAmountCents();
 void clearPendingSumupTopupSelection();
 void showPendingSumupTopupSelection();
 bool startSumupTopup(uint32_t amountCents, int vendShaftIndex = -1);
+void showSumupPaymentPendingScreen();
+bool cancelSumupPayment();
 void pollSumupPaymentStatus();
 String getProductShaftCode(int shaftIndex);
 String getProductShaftName(int shaftIndex);
@@ -367,6 +370,7 @@ bool vendProductAtIndex(int shaftIndex, const String& paymentMethod);
 bool vendProductByCode(char row, char numberKey);
 void handleTestsPage();
 void reconnectWifiAfterSettingsSave(const char* source);
+void saveWifiSettingsWithFeedback(const char* source);
 const char* wifiStatusToText(wl_status_t status);
 void handleCoinsPage();
 void handleWifiPage();
@@ -2616,6 +2620,26 @@ void reconnectWifiAfterSettingsSave(const char* source) {
   applyWifiConfig();
 }
 
+void saveWifiSettingsWithFeedback(const char* source) {
+  lcdPrint2(lang("Speichere...", "Saving..."),
+            wifiSSID.length() > 0 ? lang("Verbinde WLAN", "Connecting WiFi")
+                                  : lang("WiFi wird aus", "WiFi disabling"));
+
+  saveWifiSettings();
+  reconnectWifiAfterSettingsSave(source);
+
+  if (wifiSSID.length() == 0) {
+    showTemporaryMessage(lang("WiFi gespeichert", "WiFi saved"),
+                         lang("WiFi aus", "WiFi off"), 1600);
+  } else if (wifiConnected) {
+    showTemporaryMessage(lang("WiFi verbunden", "WiFi connected"),
+                         WiFi.localIP().toString(), 1800);
+  } else {
+    showTemporaryMessage(lang("WiFi Fehler", "WiFi failed"),
+                         lang("Daten pruefen", "Check settings"), 2200);
+  }
+}
+
 const char* wifiStatusToText(wl_status_t status) {
   switch (status) {
     case WL_NO_SHIELD: return "WL_NO_SHIELD";
@@ -3021,7 +3045,7 @@ bool runProductShaftEject(int shaftIndex, uint16_t steps, uint16_t pulseUs) {
   }
 
   if (motorCount <= 0) {
-    lastShaftActionMessage = getProductShaftLabel(shaftIndex) + ": Keine Motoren zugewiesen.";
+    lastShaftActionMessage = getProductShaftLabel(shaftIndex) + ": " + lang("Keine Motoren zugewiesen.", "No motors assigned.");
     return false;
   }
 
@@ -3288,7 +3312,7 @@ void showPendingCashlessSelection() {
 
   String code = getProductShaftCode(pendingCashlessShaftIndex);
   uint32_t amountCents = getPendingCashlessAmountCents();
-  lcdPrint2(lang("Kartenzahlung->A", "Card payment -> A"),
+  lcdPrint2(lang("Kartenzahlung->A", "Card payment ->A"),
             formatCentsToMoney(amountCents));
 }
 
@@ -3371,8 +3395,107 @@ bool startSumupTopup(uint32_t amountCents, int vendShaftIndex) {
   sumupNextPollMs = millis() + sumupPollIntervalMs;
   setSumupStatus(message.length() > 0 ? message : (lang("Zahlung gestartet: ", "Payment started: ") + formatCentsToMoney(amountCents)),
                  "payment_id=" + paymentId);
+  showSumupPaymentPendingScreen();
+  return true;
+}
+
+void showSumupPaymentPendingScreen() {
   lcdPrint2(lang("Terminal beachten", "Use terminal"),
-            formatCentsToMoney(amountCents));
+            lang("Abbruch => C", "Cancel => C"));
+}
+
+bool cancelSumupPayment() {
+  if (!sumupPaymentPending) {
+    showNormalScreen();
+    return true;
+  }
+  if (!wifiConnected) {
+    setSumupStatus(lang("SumUp Abbruch nicht moeglich: WLAN nicht verbunden.",
+                        "SumUp cancel unavailable: WiFi not connected."),
+                   "payment_id=" + sumupPendingPaymentId);
+    showTemporaryMessage(lang("Abbruch Fehler", "Cancel error"),
+                         lang("WLAN offline", "WiFi offline"), 2000);
+    showSumupPaymentPendingScreen();
+    return false;
+  }
+  if (!isSumupConfigured()) {
+    setSumupStatus(lang("SumUp Abbruch nicht moeglich: nicht konfiguriert.",
+                        "SumUp cancel unavailable: not configured."),
+                   "payment_id=" + sumupPendingPaymentId);
+    showTemporaryMessage(lang("Abbruch Fehler", "Cancel error"),
+                         lang("Config fehlt", "Config missing"), 2000);
+    showSumupPaymentPendingScreen();
+    return false;
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  String url = sumupServerUrl;
+  if (url.endsWith("/")) {
+    url.remove(url.length() - 1);
+  }
+  url += "/cancel";
+  if (!http.begin(client, url)) {
+    setSumupStatus(lang("SumUp Abbruch URL ungueltig.", "Invalid SumUp cancel URL."), url);
+    showTemporaryMessage(lang("Abbruch Fehler", "Cancel error"),
+                         lang("URL ungueltig", "Invalid URL"), 2000);
+    showSumupPaymentPendingScreen();
+    return false;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", "Bearer " + sumupApiToken);
+
+  String paymentId = sumupPendingPaymentId;
+  String body = "{\"machine_id\":\"" + jsonEscape(sumupMachineId) +
+                "\",\"payment_id\":\"" + jsonEscape(paymentId) +
+                "\",\"source\":\"vending-machine\"}";
+  appendSumupLog(lang("Breche SumUp Zahlung ab", "Cancelling SumUp payment"),
+                 "POST " + url + " | payment_id=" + paymentId);
+  int statusCode = http.POST(body);
+  String response = http.getString();
+  http.end();
+
+  if (statusCode < 200 || statusCode >= 300) {
+    setSumupStatus(lang("SumUp Abbruch fehlgeschlagen: ", "SumUp cancel failed: ") + String(statusCode),
+                   truncateForLog(response, 240));
+    showTemporaryMessage(lang("Abbruch Fehler", "Cancel error"),
+                         lang("Terminal aktiv", "Terminal active"), 2000);
+    showSumupPaymentPendingScreen();
+    return false;
+  }
+
+  String status = jsonGetString(response, "status");
+  bool ok = response.length() == 0 ||
+            jsonGetBool(response, "ok", false) ||
+            status == "canceled" ||
+            status == "cancelled" ||
+            status == "failed" ||
+            status == "expired";
+  String message = jsonGetString(response, "message");
+  if (!ok) {
+    setSumupStatus(message.length() > 0 ? message : lang("SumUp Abbruch wurde nicht bestaetigt.",
+                                                         "SumUp cancel was not confirmed."),
+                   truncateForLog(response, 240));
+    showTemporaryMessage(lang("Abbruch Fehler", "Cancel error"),
+                         lang("Nicht bestaetigt", "Not confirmed"), 2000);
+    showSumupPaymentPendingScreen();
+    return false;
+  }
+
+  sumupPaymentPending = false;
+  sumupPendingPaymentId = "";
+  sumupPendingAmountCents = 0;
+  sumupPendingVendShaftIndex = -1;
+  sumupPendingStartedMs = 0;
+  sumupNextPollMs = 0;
+  setSumupStatus(message.length() > 0 ? message : lang("SumUp Zahlung abgebrochen.",
+                                                       "SumUp payment cancelled."),
+                 "payment_id=" + paymentId + (status.length() > 0 ? " | status=" + status : ""));
+  showTemporaryMessage(lang("Kauf abgebrochen", "Purchase canceled"),
+                       lang("Terminal bereit", "Terminal ready"), 1600);
+  showNormalScreen();
   return true;
 }
 
@@ -3483,7 +3606,7 @@ String renderMotorSelect(const String& fieldName, uint8_t selectedMotor, const S
   String html = "<select id='" + inputId + "' name='" + fieldName + "'>";
   html += "<option value='0'";
   if (selectedMotor == 0) html += " selected";
-  html += ">Nicht zugewiesen</option>";
+  html += ">" + lang("Nicht zugewiesen", "Not assigned") + "</option>";
 
   for (int i = 1; i <= stepperMotorCount; i++) {
     html += "<option value='" + String(i) + "'";
@@ -3775,6 +3898,11 @@ void handleSumupPage() {
   html += "<p class='hint'>" + lang("Keypad Bedienung: A startet die direkte Aufladung, danach waehlt 1..9 den Betrag in Euro. Wenn bereits ein Produkt mit Restbetrag offen ist, startet A stattdessen genau diese Kartenzahlung.",
                                       "Keypad flow: A opens direct top-up, then 1..9 selects the amount in euros. If a product is already waiting for the missing balance, A starts that exact card payment instead.") + "</p>";
   html += "<p class='inline-note'>" + escapeHtml(sumupLastMessage.length() > 0 ? sumupLastMessage : lang("Noch keine SumUp Aktion ausgefuehrt.", "No SumUp action executed yet.")) + "</p>";
+  String sumupFormServerUrl = sumupServerUrl.length() > 0 ? sumupServerUrl : String(defaultSumupServerUrl);
+  String sumupEndpointBaseUrl = sumupFormServerUrl;
+  if (sumupEndpointBaseUrl.endsWith("/")) {
+    sumupEndpointBaseUrl.remove(sumupEndpointBaseUrl.length() - 1);
+  }
   html += "<form method='POST' action='/sumup'>";
   html += "<div class='row'><label class='label' for='sumEn'>" + lang("SumUp aktiv", "SumUp enabled") + "</label>";
   html += "<select id='sumEn' name='sumEn'>";
@@ -3782,7 +3910,7 @@ void handleSumupPage() {
   html += "<option value='1'" + String(sumupEnabled ? " selected" : "") + ">" + lang("Ja", "Yes") + "</option>";
   html += "</select></div>";
   html += "<div class='row'><label class='label' for='sumUrl'>" + lang("Server Basis-URL", "Server base URL") + "</label>";
-  html += "<input id='sumUrl' name='sumUrl' value='" + escapeHtml(sumupServerUrl) + "' placeholder='https://dein-server.de/api/sumup'></div>";
+  html += "<input id='sumUrl' name='sumUrl' value='" + escapeHtml(sumupFormServerUrl) + "' placeholder='https://dein-server.de/api/sumup'></div>";
   html += "<div class='row'><label class='label' for='sumTok'>" + lang("Bearer Token", "Bearer token") + "</label>";
   html += "<input id='sumTok' name='sumTok' value='" + escapeHtml(sumupApiToken) + "' required></div>";
   html += "<div class='row'><label class='label' for='sumMach'>" + lang("Automat / Machine ID", "Machine ID") + "</label>";
@@ -3797,8 +3925,9 @@ void handleSumupPage() {
   html += "</form>";
   html += "<div class='section-card'>";
   html += "<h3>" + lang("Erwartete Server-Endpunkte", "Expected server endpoints") + "</h3>";
-  html += "<p class='hint'>POST " + escapeHtml(sumupServerUrl) + "/start</p>";
-  html += "<p class='hint'>GET " + escapeHtml(sumupServerUrl) + "/status?machine_id=...&payment_id=...</p>";
+  html += "<p class='hint'>POST " + escapeHtml(sumupEndpointBaseUrl) + "/start</p>";
+  html += "<p class='hint'>GET " + escapeHtml(sumupEndpointBaseUrl) + "/status?machine_id=...&payment_id=...</p>";
+  html += "<p class='hint'>POST " + escapeHtml(sumupEndpointBaseUrl) + "/cancel</p>";
   html += "</div>";
   html += "<div class='section-card'>";
   html += "<h3>" + lang("SumUp Log", "SumUp log") + "</h3>";
@@ -4822,7 +4951,7 @@ void handleShaftRemoveRowPost() {
 
 void handleLoginPost() {
   if (!server.hasArg("pin")) {
-    handleWebLoginPage("PIN fehlt.");
+    handleWebLoginPage(lang("PIN fehlt.", "PIN missing."));
     return;
   }
 
@@ -4833,7 +4962,7 @@ void handleLoginPost() {
     server.sendHeader("Set-Cookie", "ESPSESSIONID=" + webSessionToken + "; Path=/; HttpOnly");
     redirectTo("/");
   } else {
-    handleWebLoginPage("Falscher PIN.");
+    handleWebLoginPage(lang("Falscher PIN.", "Wrong PIN."));
   }
 }
 
@@ -4893,6 +5022,16 @@ void setupWebServer() {
 // Modus-Handler
 // =====================================================
 void handleNormalModeKey(char key) {
+  if (sumupPaymentPending) {
+    if (key == 'C') {
+      cancelSumupPayment();
+      return;
+    }
+
+    showSumupPaymentPendingScreen();
+    return;
+  }
+
   handleComboDetection(key);
 
   if (key == '*' || key == '#') {
@@ -4902,12 +5041,6 @@ void handleNormalModeKey(char key) {
   }
 
   if (key == 'A') {
-    if (sumupPaymentPending) {
-      lcdPrint2(lang("Terminal beachten", "Use terminal"),
-                formatCentsToMoney(sumupPendingAmountCents));
-      return;
-    }
-
     if (pendingCashlessSelection) {
       uint32_t amountCents = getPendingCashlessAmountCents();
       int shaftIndex = pendingCashlessShaftIndex;
@@ -5015,7 +5148,7 @@ void handleServicePinKey(char key) {
       pinInput = "";
       enterServiceMenu();
     } else {
-      showTemporaryMessage("Falscher PIN");
+      showTemporaryMessage(lang("Falscher PIN", "Wrong PIN"));
       pinInput = "";
       showServicePinScreen();
     }
@@ -5173,9 +5306,7 @@ void handleWifiDhcpKey(char key) {
   }
 
   if (key == 'D') {
-    saveWifiSettings();
-    reconnectWifiAfterSettingsSave("Tastatur DHCP");
-    showTemporaryMessage("DHCP gespeichert", wifiDhcp ? "Ja" : "Nein");
+    saveWifiSettingsWithFeedback("Tastatur DHCP");
     enterWifiMenu();
   }
 }
@@ -5241,10 +5372,7 @@ void handleWifiSsidEditKey(char key) {
   if (key == 'D') {
     commitPendingMultiTap();
     wifiSSID = textBuffer;
-    saveWifiSettings();
-    reconnectWifiAfterSettingsSave("Tastatur SSID");
-
-    showTemporaryMessage("SSID gespeichert");
+    saveWifiSettingsWithFeedback("Tastatur SSID");
     enterWifiMenu();
   }
 }
@@ -5263,10 +5391,7 @@ void handleWifiPasswordEditKey(char key) {
   if (key == 'D') {
     commitPendingMultiTap();
     wifiPassword = textBuffer;
-    saveWifiSettings();
-    reconnectWifiAfterSettingsSave("Tastatur Passwort");
-
-    showTemporaryMessage("Passwort gespei");
+    saveWifiSettingsWithFeedback("Tastatur Passwort");
     enterWifiMenu();
   }
 }
@@ -5290,10 +5415,7 @@ void handleWifiEditIpKey(char key) {
     }
 
     wifiManualIp = textBuffer;
-    saveWifiSettings();
-    reconnectWifiAfterSettingsSave("Tastatur IP");
-
-    showTemporaryMessage("IP gespeichert");
+    saveWifiSettingsWithFeedback("Tastatur IP");
     enterManualIpMenu();
   }
 }
@@ -5317,10 +5439,7 @@ void handleWifiEditSubnetKey(char key) {
     }
 
     wifiSubnet = textBuffer;
-    saveWifiSettings();
-    reconnectWifiAfterSettingsSave("Tastatur Subnetz");
-
-    showTemporaryMessage("Subnetz gespei");
+    saveWifiSettingsWithFeedback("Tastatur Subnetz");
     enterManualIpMenu();
   }
 }
@@ -5344,10 +5463,7 @@ void handleWifiEditGatewayKey(char key) {
     }
 
     wifiGateway = textBuffer;
-    saveWifiSettings();
-    reconnectWifiAfterSettingsSave("Tastatur Gateway");
-
-    showTemporaryMessage("Gateway gespei");
+    saveWifiSettingsWithFeedback("Tastatur Gateway");
     enterManualIpMenu();
   }
 }
@@ -5371,10 +5487,7 @@ void handleWifiEditDnsKey(char key) {
     }
 
     wifiDns = textBuffer;
-    saveWifiSettings();
-    reconnectWifiAfterSettingsSave("Tastatur DNS");
-
-    showTemporaryMessage("DNS gespeichert");
+    saveWifiSettingsWithFeedback("Tastatur DNS");
     enterManualIpMenu();
   }
 }
@@ -5421,7 +5534,7 @@ void handleAdminPinEnterOldKey(char key) {
       currentMode = MODE_ADMIN_PIN_ENTER_NEW;
       showEnterNewPin();
     } else {
-      showTemporaryMessage("Alter PIN falsch");
+      showTemporaryMessage(lang("Alter PIN falsch", "Old PIN wrong"));
       pinInput = "";
       showEnterOldPin();
     }
@@ -5458,7 +5571,7 @@ void handleAdminPinEnterNewKey(char key) {
       currentMode = MODE_ADMIN_PIN_CONFIRM_NEW;
       showConfirmNewPin();
     } else {
-      showTemporaryMessage("PIN braucht", "8 Stellen");
+      showTemporaryMessage(lang("PIN braucht", "PIN needs"), lang("8 Stellen", "8 digits"));
       showEnterNewPin();
     }
   }
@@ -5492,12 +5605,12 @@ void handleAdminPinConfirmNewKey(char key) {
     if (pinInput == tempNewPin) {
       adminPin = tempNewPin;
       saveAdminPin();
-      showTemporaryMessage("PIN geaendert");
+      showTemporaryMessage(lang("PIN geaendert", "PIN changed"));
       pinInput = "";
       tempNewPin = "";
       enterAdminPinMenu();
     } else {
-      showTemporaryMessage("PIN ungleich");
+      showTemporaryMessage(lang("PIN ungleich", "PIN mismatch"));
       pinInput = "";
       tempNewPin = "";
       enterAdminPinMenu();
