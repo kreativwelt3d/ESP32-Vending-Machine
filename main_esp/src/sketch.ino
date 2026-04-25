@@ -9,9 +9,11 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
+#include <Update.h>
 #include <nvs_flash.h>
 #include <esp_err.h>
 #include <esp_system.h>
+#include "mbedtls/sha256.h"
 #include <time.h>
 #include <memory>
 
@@ -43,7 +45,7 @@
 // =====================================================
 // Grundeinstellungen
 // =====================================================
-#define FW_VERSION "1.6.7"
+#define FW_VERSION "1.7.0"
 
 hd44780_I2Cexp lcd;
 bool lcdAvailable = false;
@@ -190,6 +192,25 @@ const char* sumupLogPath = "/sumup.log";
 String webSessionToken = "";
 bool webServerStarted = false;
 
+// Firmware Update
+struct FirmwareUpdateInfo {
+  String version;
+  String firmwareUrl;
+  String sha256;
+  String md5;
+  String notes;
+  uint32_t size;
+  bool valid;
+};
+
+const char* firmwareUpdateManifestUrl = "https://sumup.kreativwelt3d.de/updates/main_esp/manifest.json";
+const char* firmwareUpdateBaseUrl = "https://sumup.kreativwelt3d.de/updates/main_esp/";
+FirmwareUpdateInfo cachedUpdateInfo = {"", "", "", "", "", 0, false};
+String lastUpdateMessage = "";
+String lastUpdateDetail = "";
+unsigned long lastUpdateCheckMs = 0;
+bool firmwareUpdateInProgress = false;
+
 // Muenzpruefer
 const int coinPulsePin = 18;
 const uint8_t coinMappingMaxCount = 20;
@@ -223,6 +244,7 @@ uint16_t lastCoinValueCents = 0;
 bool pendingCashlessSelection = false;
 int pendingCashlessShaftIndex = -1;
 bool pendingSumupTopupSelection = false;
+String pendingSumupTopupInput = "";
 bool sumupEnabled = false;
 const char* defaultSumupServerUrl = "https://sumup.kreativwelt3d.de/";
 String sumupServerUrl = "";
@@ -350,6 +372,16 @@ String jsonGetString(const String& json, const String& key);
 bool jsonGetBool(const String& json, const String& key, bool defaultValue);
 uint32_t jsonGetUInt(const String& json, const String& key, uint32_t defaultValue);
 bool isSumupConfigured();
+void clearCachedUpdateInfo();
+void setUpdateStatus(const String& message, const String& detail = "");
+String normalizeHexString(String value);
+String bytesToHexString(const uint8_t* bytes, size_t length);
+int compareVersionStrings(const String& a, const String& b);
+String resolveUpdateFirmwareUrl(const String& firmware);
+bool canStartFirmwareUpdate(String& reasonOut);
+bool fetchFirmwareUpdateManifest(FirmwareUpdateInfo& info);
+bool isCachedFirmwareUpdateNewer();
+bool installFirmwareUpdate(const FirmwareUpdateInfo& info);
 void clearPendingCashlessSelection();
 void showPendingCashlessSelection();
 uint32_t getPendingCashlessAmountCents();
@@ -368,6 +400,8 @@ void clearPendingProductSelection();
 void showPendingProductSelection();
 bool vendProductAtIndex(int shaftIndex, const String& paymentMethod);
 bool vendProductByCode(char row, char numberKey);
+bool isProductShaftInStock(int shaftIndex);
+bool rejectEmptyProductShaft(int shaftIndex, const String& displayName);
 void handleTestsPage();
 void reconnectWifiAfterSettingsSave(const char* source);
 void saveWifiSettingsWithFeedback(const char* source);
@@ -376,6 +410,9 @@ void handleCoinsPage();
 void handleWifiPage();
 void handleEmailPage();
 void handleSumupPage();
+void handleUpdatePage();
+void handleUpdateCheckPost();
+void handleUpdateInstallPost();
 void handleShaftsPage();
 void handleCashbookPage();
 void handleMotorTestPost();
@@ -3061,6 +3098,37 @@ bool runProductShaftEject(int shaftIndex, uint16_t steps, uint16_t pulseUs) {
   return ok;
 }
 
+bool isProductShaftInStock(int shaftIndex) {
+  return shaftIndex >= 0 &&
+         shaftIndex < productShaftCount &&
+         productShaftQuantity[shaftIndex] > 0;
+}
+
+bool rejectEmptyProductShaft(int shaftIndex, const String& displayName) {
+  if (isProductShaftInStock(shaftIndex)) {
+    return false;
+  }
+
+  String shaftCode = getProductShaftCode(shaftIndex);
+  String shaftLabel = getProductShaftLabel(shaftIndex);
+  uint8_t quantity = 0;
+  if (shaftIndex >= 0 && shaftIndex < productShaftCount) {
+    quantity = productShaftQuantity[shaftIndex];
+  }
+
+  Serial.printf("Vend blocked: shaftIndex=%d code=%s qty=%u\n",
+                shaftIndex,
+                shaftCode.c_str(),
+                (unsigned int)quantity);
+
+  lastShaftActionMessage = shaftLabel + ": " +
+                           displayName + " " +
+                           lang("ist leer und nicht verfuegbar.", "is empty and unavailable.");
+  showTemporaryMessage(lang("Nicht verfuegbar", "Unavailable"), displayName, 2500);
+  showNormalScreen();
+  return true;
+}
+
 bool vendProductByCode(char row, char numberKey) {
   int shaftIndex = -1;
 
@@ -3077,12 +3145,7 @@ bool vendProductByCode(char row, char numberKey) {
   String shaftName = getProductShaftName(shaftIndex);
   String displayName = shaftName.length() > 0 ? shaftName : getProductShaftCode(shaftIndex);
 
-  if (productShaftQuantity[shaftIndex] == 0) {
-    lastShaftActionMessage = getProductShaftLabel(shaftIndex) + ": " +
-                             displayName + " " +
-                             lang("ist leer und nicht verfuegbar.", "is empty and unavailable.");
-    showTemporaryMessage(lang("Nicht verfuegbar", "Unavailable"), displayName, 2500);
-    showNormalScreen();
+  if (rejectEmptyProductShaft(shaftIndex, displayName)) {
     return false;
   }
 
@@ -3114,14 +3177,15 @@ bool vendProductAtIndex(int shaftIndex, const String& paymentMethod) {
   String shaftName = getProductShaftName(shaftIndex);
   String displayName = shaftName.length() > 0 ? shaftName : getProductShaftCode(shaftIndex);
 
-  if (productShaftQuantity[shaftIndex] == 0) {
-    lastShaftActionMessage = getProductShaftLabel(shaftIndex) + ": " +
-                             displayName + " " +
-                             lang("ist leer und nicht verfuegbar.", "is empty and unavailable.");
-    showTemporaryMessage(lang("Nicht verfuegbar", "Unavailable"), displayName, 2500);
-    showNormalScreen();
+  if (rejectEmptyProductShaft(shaftIndex, displayName)) {
     return false;
   }
+
+  Serial.printf("Vend start: shaftIndex=%d code=%s qty=%u payment=%s\n",
+                shaftIndex,
+                getProductShaftCode(shaftIndex).c_str(),
+                (unsigned int)productShaftQuantity[shaftIndex],
+                paymentMethod.c_str());
 
   uint16_t priceCents = productShaftPriceCents[shaftIndex];
   if (creditCents < priceCents) {
@@ -3196,6 +3260,7 @@ String htmlHeader(const String& title) {
   s += ".coin-remove{background:#fff;color:var(--text);border-color:var(--line);font-weight:normal;}";
   s += ".hint{font-size:14px;color:var(--muted);}";
   s += ".inline-note{padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid var(--line);margin:12px 0;}";
+  s += ".footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:14px;}";
   s += "table{width:100%;border-collapse:collapse;margin-top:10px;}";
   s += "th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top;}";
   s += "th{background:#f4f8fb;}";
@@ -3205,7 +3270,7 @@ String htmlHeader(const String& title) {
 }
 
 String htmlFooter() {
-  return "</div></body></html>";
+  return "<div class='footer'>VendingOS " + String(FW_VERSION) + " by Kreativ Welt 3D</div></div></body></html>";
 }
 
 String renderWebTabs(const String& activeTab) {
@@ -3218,6 +3283,7 @@ String renderWebTabs(const String& activeTab) {
   html += "<a class='tab" + String(activeTab == "shafts" ? " active" : "") + "' href='/shafts'>" + lang("Schaechte", "Slots") + "</a>";
   html += "<a class='tab" + String(activeTab == "cashbook" ? " active" : "") + "' href='/cashbook'>" + lang("Kassenbuch", "Cashbook") + "</a>";
   html += "<a class='tab" + String(activeTab == "tests" ? " active" : "") + "' href='/tests'>" + lang("Tests", "Tests") + "</a>";
+  html += "<a class='tab" + String(activeTab == "update" ? " active" : "") + "' href='/update'>Update</a>";
   html += "</div>";
   return html;
 }
@@ -3298,6 +3364,406 @@ bool isSumupConfigured() {
          sumupMachineId.length() > 0;
 }
 
+void clearCachedUpdateInfo() {
+  cachedUpdateInfo.version = "";
+  cachedUpdateInfo.firmwareUrl = "";
+  cachedUpdateInfo.sha256 = "";
+  cachedUpdateInfo.md5 = "";
+  cachedUpdateInfo.notes = "";
+  cachedUpdateInfo.size = 0;
+  cachedUpdateInfo.valid = false;
+}
+
+void setUpdateStatus(const String& message, const String& detail) {
+  lastUpdateMessage = message;
+  lastUpdateDetail = detail;
+  Serial.println("[UPDATE] " + message + (detail.length() > 0 ? " | " + detail : ""));
+}
+
+String normalizeHexString(String value) {
+  value.trim();
+  value.toLowerCase();
+  value.replace(" ", "");
+  value.replace(":", "");
+  value.replace("-", "");
+  return value;
+}
+
+String bytesToHexString(const uint8_t* bytes, size_t length) {
+  const char* hex = "0123456789abcdef";
+  String out;
+  out.reserve(length * 2);
+  for (size_t i = 0; i < length; i++) {
+    out += hex[(bytes[i] >> 4) & 0x0F];
+    out += hex[bytes[i] & 0x0F];
+  }
+  return out;
+}
+
+bool isHexStringValue(const String& value) {
+  if (value.length() == 0) return false;
+  for (size_t i = 0; i < value.length(); i++) {
+    char c = value[i];
+    bool isHex = (c >= '0' && c <= '9') ||
+                 (c >= 'a' && c <= 'f') ||
+                 (c >= 'A' && c <= 'F');
+    if (!isHex) return false;
+  }
+  return true;
+}
+
+int readVersionPart(const String& value, int& index) {
+  while (index < value.length() && !isDigit(value[index])) {
+    index++;
+  }
+  if (index >= value.length()) return -1;
+
+  int part = 0;
+  while (index < value.length() && isDigit(value[index])) {
+    part = (part * 10) + (value[index] - '0');
+    index++;
+  }
+  return part;
+}
+
+int compareVersionStrings(const String& a, const String& b) {
+  int indexA = 0;
+  int indexB = 0;
+
+  while (indexA < a.length() || indexB < b.length()) {
+    int partA = readVersionPart(a, indexA);
+    int partB = readVersionPart(b, indexB);
+
+    if (partA < 0 && partB < 0) return 0;
+    if (partA < 0) partA = 0;
+    if (partB < 0) partB = 0;
+
+    if (partA > partB) return 1;
+    if (partA < partB) return -1;
+  }
+
+  return 0;
+}
+
+String resolveUpdateFirmwareUrl(const String& firmware) {
+  String trimmed = firmware;
+  trimmed.trim();
+
+  if (trimmed.startsWith("https://") || trimmed.startsWith("http://")) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("/")) {
+    return String("https://sumup.kreativwelt3d.de") + trimmed;
+  }
+
+  String base = firmwareUpdateBaseUrl;
+  if (!base.endsWith("/")) {
+    base += "/";
+  }
+  return base + trimmed;
+}
+
+bool canStartFirmwareUpdate(String& reasonOut) {
+  if (firmwareUpdateInProgress) {
+    reasonOut = lang("Ein Update laeuft bereits.", "An update is already running.");
+    return false;
+  }
+  if (!wifiConnected || WiFi.status() != WL_CONNECTED) {
+    reasonOut = lang("WLAN ist nicht verbunden.", "WiFi is not connected.");
+    return false;
+  }
+  if (sumupPaymentPending) {
+    reasonOut = lang("Eine SumUp Zahlung ist noch offen.", "A SumUp payment is still pending.");
+    return false;
+  }
+  if (creditCents > 0) {
+    reasonOut = lang("Update blockiert: Guthaben ist noch vorhanden.", "Update blocked: credit is still available.");
+    return false;
+  }
+  reasonOut = "";
+  return true;
+}
+
+bool fetchFirmwareUpdateManifest(FirmwareUpdateInfo& info) {
+  info.version = "";
+  info.firmwareUrl = "";
+  info.sha256 = "";
+  info.md5 = "";
+  info.notes = "";
+  info.size = 0;
+  info.valid = false;
+
+  if (!wifiConnected || WiFi.status() != WL_CONNECTED) {
+    setUpdateStatus(lang("Update-Pruefung fehlgeschlagen.", "Update check failed."),
+                    lang("WLAN ist nicht verbunden.", "WiFi is not connected."));
+    return false;
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(15000);
+
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(15000);
+
+  String manifestUrl = firmwareUpdateManifestUrl;
+  if (!http.begin(client, manifestUrl)) {
+    setUpdateStatus(lang("Update-Manifest URL ungueltig.", "Invalid update manifest URL."), manifestUrl);
+    return false;
+  }
+
+  int statusCode = http.GET();
+  String response = http.getString();
+  http.end();
+
+  if (statusCode < 200 || statusCode >= 300) {
+    setUpdateStatus(lang("Update-Manifest konnte nicht geladen werden: ", "Update manifest could not be loaded: ") + String(statusCode),
+                    truncateForLog(response.length() > 0 ? response : HTTPClient::errorToString(statusCode), 220));
+    return false;
+  }
+
+  String firmware = jsonGetString(response, "firmware_url");
+  if (firmware.length() == 0) firmware = jsonGetString(response, "firmware");
+  if (firmware.length() == 0) firmware = jsonGetString(response, "url");
+
+  info.version = jsonGetString(response, "version");
+  info.firmwareUrl = resolveUpdateFirmwareUrl(firmware);
+  info.sha256 = normalizeHexString(jsonGetString(response, "sha256"));
+  info.md5 = normalizeHexString(jsonGetString(response, "md5"));
+  info.notes = jsonGetString(response, "notes");
+  info.size = jsonGetUInt(response, "size", 0);
+
+  if (info.version.length() == 0 || firmware.length() == 0) {
+    setUpdateStatus(lang("Update-Manifest ist unvollstaendig.", "Update manifest is incomplete."),
+                    lang("version und firmware fehlen oder sind leer.", "version and firmware are missing or empty."));
+    return false;
+  }
+
+  if (info.sha256.length() > 0 && (info.sha256.length() != 64 || !isHexStringValue(info.sha256))) {
+    setUpdateStatus(lang("Update-Manifest SHA-256 ungueltig.", "Update manifest SHA-256 invalid."), info.sha256);
+    return false;
+  }
+
+  if (info.md5.length() > 0 && (info.md5.length() != 32 || !isHexStringValue(info.md5))) {
+    setUpdateStatus(lang("Update-Manifest MD5 ungueltig.", "Update manifest MD5 invalid."), info.md5);
+    return false;
+  }
+
+  info.valid = true;
+  cachedUpdateInfo = info;
+  lastUpdateCheckMs = millis();
+  setUpdateStatus(lang("Update-Manifest geladen.", "Update manifest loaded."),
+                  "version=" + info.version + " url=" + info.firmwareUrl);
+  return true;
+}
+
+bool isCachedFirmwareUpdateNewer() {
+  return cachedUpdateInfo.valid && compareVersionStrings(cachedUpdateInfo.version, FW_VERSION) > 0;
+}
+
+bool installFirmwareUpdate(const FirmwareUpdateInfo& info) {
+  String reason;
+  if (!canStartFirmwareUpdate(reason)) {
+    setUpdateStatus(lang("Update kann nicht gestartet werden.", "Update cannot be started."), reason);
+    return false;
+  }
+  if (!info.valid) {
+    setUpdateStatus(lang("Update kann nicht gestartet werden.", "Update cannot be started."),
+                    lang("Keine gueltige Update-Information vorhanden.", "No valid update information available."));
+    return false;
+  }
+  if (compareVersionStrings(info.version, FW_VERSION) <= 0) {
+    setUpdateStatus(lang("Kein neueres Update verfuegbar.", "No newer update available."),
+                    "installed=" + String(FW_VERSION) + " available=" + info.version);
+    return false;
+  }
+  if (!info.firmwareUrl.startsWith("https://")) {
+    setUpdateStatus(lang("Update abgebrochen.", "Update aborted."),
+                    lang("Firmware-URL muss HTTPS verwenden.", "Firmware URL must use HTTPS."));
+    return false;
+  }
+
+  firmwareUpdateInProgress = true;
+  setUpdateStatus(lang("Firmware-Update startet.", "Firmware update starting."),
+                  "version=" + info.version + " url=" + info.firmwareUrl);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(20000);
+
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(20000);
+
+  mbedtls_sha256_context shaContext;
+  mbedtls_sha256_init(&shaContext);
+  bool shaStarted = false;
+  bool ok = false;
+  bool shouldRestart = false;
+  String failureMessage = "";
+  String failureDetail = "";
+
+  do {
+    if (!http.begin(client, info.firmwareUrl)) {
+      failureMessage = lang("Firmware-URL ungueltig.", "Invalid firmware URL.");
+      failureDetail = info.firmwareUrl;
+      break;
+    }
+
+    int statusCode = http.GET();
+    if (statusCode < 200 || statusCode >= 300) {
+      String response = http.getString();
+      failureMessage = lang("Firmware konnte nicht geladen werden: ", "Firmware could not be loaded: ") + String(statusCode);
+      failureDetail = truncateForLog(response.length() > 0 ? response : HTTPClient::errorToString(statusCode), 220);
+      break;
+    }
+
+    int contentLength = http.getSize();
+    if (contentLength <= 0) {
+      failureMessage = lang("Firmware-Groesse fehlt.", "Firmware size missing.");
+      failureDetail = lang("Der Server muss Content-Length senden.", "The server must send Content-Length.");
+      break;
+    }
+
+    if (info.size > 0 && info.size != (uint32_t)contentLength) {
+      failureMessage = lang("Firmware-Groesse passt nicht zum Manifest.", "Firmware size does not match manifest.");
+      failureDetail = "manifest=" + String(info.size) + " http=" + String(contentLength);
+      break;
+    }
+
+    if (info.sha256.length() > 0) {
+      if (mbedtls_sha256_starts_ret(&shaContext, 0) != 0) {
+        failureMessage = lang("SHA-256 Pruefung konnte nicht gestartet werden.", "SHA-256 check could not be started.");
+        break;
+      }
+      shaStarted = true;
+    }
+
+    if (info.md5.length() == 32 && !Update.setMD5(info.md5.c_str())) {
+      failureMessage = lang("MD5 Pruefsumme ungueltig.", "MD5 checksum invalid.");
+      failureDetail = info.md5;
+      break;
+    }
+
+    if (!Update.begin((size_t)contentLength, U_FLASH)) {
+      failureMessage = lang("OTA-Speicher reicht nicht aus.", "OTA storage is not sufficient.");
+      failureDetail = Update.errorString();
+      break;
+    }
+
+    WiFiClient* stream = http.getStreamPtr();
+    uint8_t buffer[1024];
+    size_t written = 0;
+    unsigned long lastDataMs = millis();
+    unsigned long lastProgressMs = millis();
+
+    while (written < (size_t)contentLength) {
+      size_t available = stream->available();
+      if (available > 0) {
+        size_t remaining = (size_t)contentLength - written;
+        size_t toRead = available;
+        if (toRead > sizeof(buffer)) toRead = sizeof(buffer);
+        if (toRead > remaining) toRead = remaining;
+
+        int readBytes = stream->readBytes(buffer, toRead);
+        if (readBytes <= 0) {
+          failureMessage = lang("Firmware-Download unterbrochen.", "Firmware download interrupted.");
+          failureDetail = lang("Keine Daten vom Server gelesen.", "No data read from server.");
+          break;
+        }
+
+        if (shaStarted && mbedtls_sha256_update_ret(&shaContext, buffer, readBytes) != 0) {
+          failureMessage = lang("SHA-256 Pruefung fehlgeschlagen.", "SHA-256 check failed.");
+          failureDetail = lang("Hash konnte nicht berechnet werden.", "Hash could not be calculated.");
+          break;
+        }
+
+        size_t updateWritten = Update.write(buffer, (size_t)readBytes);
+        if (updateWritten != (size_t)readBytes) {
+          failureMessage = lang("Firmware konnte nicht geschrieben werden.", "Firmware could not be written.");
+          failureDetail = Update.errorString();
+          break;
+        }
+
+        written += updateWritten;
+        lastDataMs = millis();
+        if (millis() - lastProgressMs > 1000) {
+          lastProgressMs = millis();
+          setUpdateStatus(lang("Firmware wird geschrieben.", "Writing firmware."),
+                          formatBytes(written) + " / " + formatBytes((uint32_t)contentLength));
+        }
+        delay(1);
+      } else {
+        if (millis() - lastDataMs > 20000) {
+          failureMessage = lang("Firmware-Download Timeout.", "Firmware download timeout.");
+          failureDetail = formatBytes(written) + " / " + formatBytes((uint32_t)contentLength);
+          break;
+        }
+        delay(1);
+      }
+    }
+
+    if (failureMessage.length() > 0) {
+      break;
+    }
+
+    if (written != (size_t)contentLength) {
+      failureMessage = lang("Firmware unvollstaendig geladen.", "Firmware downloaded incompletely.");
+      failureDetail = formatBytes(written) + " / " + formatBytes((uint32_t)contentLength);
+      break;
+    }
+
+    if (shaStarted) {
+      uint8_t shaResult[32];
+      if (mbedtls_sha256_finish_ret(&shaContext, shaResult) != 0) {
+        failureMessage = lang("SHA-256 Pruefung fehlgeschlagen.", "SHA-256 check failed.");
+        failureDetail = lang("Hash konnte nicht beendet werden.", "Hash could not be finished.");
+        break;
+      }
+
+      String actualSha = bytesToHexString(shaResult, sizeof(shaResult));
+      if (actualSha != info.sha256) {
+        failureMessage = lang("SHA-256 Pruefsumme passt nicht.", "SHA-256 checksum mismatch.");
+        failureDetail = "expected=" + info.sha256 + " actual=" + actualSha;
+        break;
+      }
+    }
+
+    if (!Update.end(false)) {
+      failureMessage = lang("Update konnte nicht aktiviert werden.", "Update could not be activated.");
+      failureDetail = Update.errorString();
+      break;
+    }
+
+    ok = true;
+    shouldRestart = true;
+  } while (false);
+
+  if (!ok && Update.isRunning()) {
+    Update.abort();
+  }
+  mbedtls_sha256_free(&shaContext);
+  http.end();
+  firmwareUpdateInProgress = false;
+
+  if (!ok) {
+    setUpdateStatus(failureMessage.length() > 0 ? failureMessage : lang("Update fehlgeschlagen.", "Update failed."),
+                    failureDetail);
+    return false;
+  }
+
+  setUpdateStatus(lang("Update erfolgreich installiert. Neustart...", "Update installed successfully. Restarting..."),
+                  "version=" + info.version);
+
+  if (shouldRestart) {
+    delay(1200);
+    ESP.restart();
+  }
+  return true;
+}
+
 void clearPendingCashlessSelection() {
   pendingCashlessSelection = false;
   pendingCashlessShaftIndex = -1;
@@ -3325,13 +3791,23 @@ uint32_t getPendingCashlessAmountCents() {
 
 void clearPendingSumupTopupSelection() {
   pendingSumupTopupSelection = false;
+  pendingSumupTopupInput = "";
 }
 
 void showPendingSumupTopupSelection() {
   pendingSumupTopupSelection = true;
   pendingSumupTopupSelectionMs = millis();
-  lcdPrint2(lang("A-Aufladung aktiv", "Top-up active"),
-            lang("1..9 EUR, D=Abbr", "1..9 EUR, D=Can"));
+  pendingSumupTopupInput = "";
+  lcdPrint2(lang("Aufladung EUR?", "Top-up EUR?"),
+            lang("0-9,C=loe,D=ab", "0-9,C=del,D=can"));
+}
+
+void showPendingSumupTopupAmount() {
+  String amountLine = pendingSumupTopupInput.length() > 0
+    ? pendingSumupTopupInput + " EUR"
+    : lang("Bitte Betrag", "Enter amount");
+  lcdPrint2(lang("A bestaetigt", "A confirms"),
+            amountLine);
 }
 
 bool startSumupTopup(uint32_t amountCents, int vendShaftIndex) {
@@ -3895,8 +4371,8 @@ void handleSumupPage() {
   html += "</div>";
   html += "<p class='hint'>" + lang("Der Automat spricht per HTTPS mit deinem eigenen Server. Dieser Server uebernimmt die eigentliche Kommunikation mit der SumUp API und dem Virtual Solo.",
                                       "The machine talks to your own server over HTTPS. That server handles the actual communication with the SumUp API and the Virtual Solo.") + "</p>";
-  html += "<p class='hint'>" + lang("Keypad Bedienung: A startet die direkte Aufladung, danach waehlt 1..9 den Betrag in Euro. Wenn bereits ein Produkt mit Restbetrag offen ist, startet A stattdessen genau diese Kartenzahlung.",
-                                      "Keypad flow: A opens direct top-up, then 1..9 selects the amount in euros. If a product is already waiting for the missing balance, A starts that exact card payment instead.") + "</p>";
+  html += "<p class='hint'>" + lang("Keypad Bedienung: A startet die direkte Aufladung, danach gibst du den Betrag in Euro ueber 0..9 ein und bestaetigst erneut mit A. C loescht die letzte Ziffer, D bricht ab. Wenn bereits ein Produkt mit Restbetrag offen ist, startet A stattdessen genau diese Kartenzahlung.",
+                                      "Keypad flow: A opens direct top-up, then you enter the amount in euros with 0..9 and confirm with A again. C deletes the last digit, D cancels. If a product is already waiting for the missing balance, A starts that exact card payment instead.") + "</p>";
   html += "<p class='inline-note'>" + escapeHtml(sumupLastMessage.length() > 0 ? sumupLastMessage : lang("Noch keine SumUp Aktion ausgefuehrt.", "No SumUp action executed yet.")) + "</p>";
   String sumupFormServerUrl = sumupServerUrl.length() > 0 ? sumupServerUrl : String(defaultSumupServerUrl);
   String sumupEndpointBaseUrl = sumupFormServerUrl;
@@ -3937,6 +4413,135 @@ void handleSumupPage() {
   html += "</div>";
   html += htmlFooter();
   server.send(200, "text/html; charset=utf-8", html);
+}
+
+void handleUpdatePage() {
+  if (!isWebAuthenticated()) {
+    redirectTo("/");
+    return;
+  }
+
+  String startReason;
+  bool canInstall = canStartFirmwareUpdate(startReason);
+  bool updateNewer = isCachedFirmwareUpdateNewer();
+
+  String html = htmlHeader("Update");
+  html.reserve(6500);
+  html += "<h2>Update</h2>";
+  html += "<div class='actions'><a class='button-link' href='/logout'>" + lang("Logout", "Logout") + "</a></div>";
+  html += renderWebTabs("update");
+
+  html += "<div class='section-card'>";
+  html += "<h3>" + lang("Firmware", "Firmware") + "</h3>";
+  html += "<p><span class='label'>" + lang("Installiert:", "Installed:") + "</span> " + String(FW_VERSION) + "</p>";
+  html += "<p><span class='label'>Manifest:</span> " + escapeHtml(String(firmwareUpdateManifestUrl)) + "</p>";
+  html += "<p><span class='label'>Status:</span> " +
+          escapeHtml(lastUpdateMessage.length() > 0 ? lastUpdateMessage : lang("Noch keine Update-Pruefung ausgefuehrt.", "No update check has been run yet.")) + "</p>";
+  if (lastUpdateDetail.length() > 0) {
+    html += "<p class='inline-note'>" + escapeHtml(lastUpdateDetail) + "</p>";
+  }
+  if (!canInstall) {
+    html += "<p class='err'>" + escapeHtml(startReason) + "</p>";
+  }
+  html += "<form method='POST' action='/update/check'>";
+  html += "<div class='row'><button type='submit'>" + lang("Nach Updates suchen", "Check for updates") + "</button></div>";
+  html += "</form>";
+  html += "</div>";
+
+  if (cachedUpdateInfo.valid) {
+    html += "<div class='section-card'>";
+    html += "<h3>" + lang("Verfuegbares Paket", "Available package") + "</h3>";
+    html += "<p><span class='label'>Version:</span> " + escapeHtml(cachedUpdateInfo.version) + "</p>";
+    html += "<p><span class='label'>" + lang("Groesse:", "Size:") + "</span> " +
+            (cachedUpdateInfo.size > 0 ? formatBytes(cachedUpdateInfo.size) : lang("unbekannt", "unknown")) + "</p>";
+    html += "<p><span class='label'>URL:</span> " + escapeHtml(cachedUpdateInfo.firmwareUrl) + "</p>";
+    if (cachedUpdateInfo.sha256.length() > 0) {
+      html += "<p><span class='label'>SHA-256:</span> " + escapeHtml(cachedUpdateInfo.sha256) + "</p>";
+    }
+    if (cachedUpdateInfo.md5.length() > 0) {
+      html += "<p><span class='label'>MD5:</span> " + escapeHtml(cachedUpdateInfo.md5) + "</p>";
+    }
+    if (cachedUpdateInfo.notes.length() > 0) {
+      html += "<p class='inline-note'>" + escapeHtml(cachedUpdateInfo.notes) + "</p>";
+    }
+    if (updateNewer) {
+      html += "<form method='POST' action='/update/install'>";
+      html += "<div class='row'><button type='submit'";
+      if (!canInstall) {
+        html += " disabled";
+      }
+      html += ">" + lang("Update installieren", "Install update") + "</button></div>";
+      html += "</form>";
+    } else {
+      html += "<p class='ok'>" + lang("Die installierte Firmware ist aktuell.", "The installed firmware is current.") + "</p>";
+    }
+    html += "</div>";
+  }
+
+
+  html += htmlFooter();
+  server.send(200, "text/html; charset=utf-8", html);
+}
+
+void handleUpdateCheckPost() {
+  if (!isWebAuthenticated()) {
+    redirectTo("/");
+    return;
+  }
+
+  FirmwareUpdateInfo info;
+  if (fetchFirmwareUpdateManifest(info)) {
+    if (compareVersionStrings(info.version, FW_VERSION) > 0) {
+      setUpdateStatus(lang("Update verfuegbar.", "Update available."),
+                      "installed=" + String(FW_VERSION) + " available=" + info.version);
+    } else {
+      setUpdateStatus(lang("Kein neueres Update verfuegbar.", "No newer update available."),
+                      "installed=" + String(FW_VERSION) + " available=" + info.version);
+    }
+  } else {
+    clearCachedUpdateInfo();
+  }
+
+  redirectTo("/update");
+}
+
+void handleUpdateInstallPost() {
+  if (!isWebAuthenticated()) {
+    redirectTo("/");
+    return;
+  }
+
+  String reason;
+  if (!canStartFirmwareUpdate(reason)) {
+    setUpdateStatus(lang("Update kann nicht gestartet werden.", "Update cannot be started."), reason);
+    redirectTo("/update");
+    return;
+  }
+
+  FirmwareUpdateInfo info;
+  if (!fetchFirmwareUpdateManifest(info)) {
+    redirectTo("/update");
+    return;
+  }
+
+  if (compareVersionStrings(info.version, FW_VERSION) <= 0) {
+    setUpdateStatus(lang("Kein neueres Update verfuegbar.", "No newer update available."),
+                    "installed=" + String(FW_VERSION) + " available=" + info.version);
+    redirectTo("/update");
+    return;
+  }
+
+  String html = htmlHeader("Update");
+  html += "<h2>Update</h2>";
+  html += "<p class='inline-note'>" + lang("Firmware wird installiert. Der Automat startet danach neu.",
+                                           "Firmware is being installed. The machine will restart afterwards.") + "</p>";
+  html += "<p><span class='label'>Version:</span> " + escapeHtml(info.version) + "</p>";
+  html += "<script>setTimeout(function(){location.href='/update';},25000);</script>";
+  html += htmlFooter();
+  server.send(200, "text/html; charset=utf-8", html);
+  delay(500);
+
+  installFirmwareUpdate(info);
 }
 
 void handleCoinsPage() {
@@ -4988,6 +5593,7 @@ void setupWebServer() {
   server.on("/wifi", HTTP_GET, handleWifiPage);
   server.on("/email", HTTP_GET, handleEmailPage);
   server.on("/sumup", HTTP_GET, handleSumupPage);
+  server.on("/update", HTTP_GET, handleUpdatePage);
   server.on("/coins", HTTP_GET, handleCoinsPage);
   server.on("/shafts", HTTP_GET, handleShaftsPage);
   server.on("/cashbook", HTTP_GET, handleCashbookPage);
@@ -4999,6 +5605,8 @@ void setupWebServer() {
   server.on("/wifi", HTTP_POST, handleWifiSettingsPost);
   server.on("/email", HTTP_POST, handleEmailSettingsPost);
   server.on("/sumup", HTTP_POST, handleSumupSettingsPost);
+  server.on("/update/check", HTTP_POST, handleUpdateCheckPost);
+  server.on("/update/install", HTTP_POST, handleUpdateInstallPost);
   server.on("/email/test", HTTP_POST, handleEmailTestPost);
   server.on("/email/cashbook", HTTP_POST, handleEmailCashbookPost);
   server.on("/coins", HTTP_POST, handleCoinSettingsPost);
@@ -5041,7 +5649,21 @@ void handleNormalModeKey(char key) {
   }
 
   if (key == 'A') {
-    if (pendingCashlessSelection) {
+    if (pendingSumupTopupSelection) {
+      uint32_t amountEuros = pendingSumupTopupInput.toInt();
+      uint32_t amountCents = amountEuros * 100UL;
+      if (amountCents == 0) {
+        showTemporaryMessage(lang("Betrag fehlt", "Amount missing"),
+                             lang("0-9 waehlen", "Choose 0-9"), 1500);
+        showPendingSumupTopupAmount();
+        return;
+      }
+      clearPendingSumupTopupSelection();
+      if (!startSumupTopup(amountCents, -1)) {
+        showTemporaryMessage(lang("SumUp Fehler", "SumUp error"), formatCentsToMoney(amountCents), 2000);
+        showNormalScreen();
+      }
+    } else if (pendingCashlessSelection) {
       uint32_t amountCents = getPendingCashlessAmountCents();
       int shaftIndex = pendingCashlessShaftIndex;
       clearPendingCashlessSelection();
@@ -5067,17 +5689,30 @@ void handleNormalModeKey(char key) {
   }
 
   if (pendingSumupTopupSelection) {
-    if (key >= '1' && key <= '9') {
-      uint32_t amountCents = (uint32_t)(key - '0') * 100UL;
-      clearPendingSumupTopupSelection();
-      if (!startSumupTopup(amountCents, -1)) {
-        showTemporaryMessage(lang("SumUp Fehler", "SumUp error"), formatCentsToMoney(amountCents), 2000);
+    if (key >= '0' && key <= '9') {
+      if (pendingSumupTopupInput.length() < 4) {
+        if (pendingSumupTopupInput.length() > 0 || key != '0') {
+          pendingSumupTopupInput += key;
+        }
+      }
+      pendingSumupTopupSelectionMs = millis();
+      showPendingSumupTopupAmount();
+      return;
+    }
+
+    if (key == 'C') {
+      if (pendingSumupTopupInput.length() > 0) {
+        pendingSumupTopupInput.remove(pendingSumupTopupInput.length() - 1);
+        pendingSumupTopupSelectionMs = millis();
+        showPendingSumupTopupAmount();
+      } else {
+        clearPendingSumupTopupSelection();
         showNormalScreen();
       }
       return;
     }
 
-    if (key == 'C' || key == 'D') {
+    if (key == 'D') {
       clearPendingSumupTopupSelection();
       showNormalScreen();
       return;

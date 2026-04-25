@@ -1,7 +1,9 @@
 Import("env")
 
 import json
+import hashlib
 import os
+import re
 import shutil
 
 
@@ -36,6 +38,26 @@ def _normalize_frequency(value):
         return "{}m".format(int(value) // 1000000)
 
     return value.lower()
+
+
+def _hash_file(path, algorithm):
+    digest = hashlib.new(algorithm)
+    with open(path, "rb") as firmware_file:
+        for chunk in iter(lambda: firmware_file.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _get_firmware_version(env):
+    sketch_path = os.path.join(env.subst("$PROJECT_DIR"), "src", "sketch.ino")
+    if not os.path.exists(sketch_path):
+        return "local"
+
+    with open(sketch_path, "r", encoding="utf-8", errors="ignore") as sketch_file:
+        sketch = sketch_file.read()
+
+    match = re.search(r'#define\s+FW_VERSION\s+"([^"]+)"', sketch)
+    return match.group(1) if match else "local"
 
 
 def merge_bin(source, target, env):
@@ -112,6 +134,19 @@ def merge_bin(source, target, env):
     manifest_path = os.path.join(build_dir, "webflash-manifest.json")
     with open(manifest_path, "w", encoding="ascii") as manifest_file:
         json.dump(manifest, manifest_file, indent=2)
+        manifest_file.write("\n")
+
+    ota_manifest = {
+        "version": _get_firmware_version(env),
+        "firmware": "firmware.bin",
+        "size": os.path.getsize(firmware),
+        "sha256": _hash_file(firmware, "sha256"),
+        "md5": _hash_file(firmware, "md5"),
+        "notes": "",
+    }
+    ota_manifest_path = os.path.join(build_dir, "manifest.json")
+    with open(ota_manifest_path, "w", encoding="ascii") as manifest_file:
+        json.dump(ota_manifest, manifest_file, indent=2)
         manifest_file.write("\n")
 
 
