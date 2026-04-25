@@ -7,7 +7,7 @@ Language:
 - [Deutsch](#deutsch)
 - [English](#english)
 
-Current firmware version in code: `1.6.7`
+Current firmware version in code: `1.7.0`
 
 Ready-to-flash firmware releases are available here:
 
