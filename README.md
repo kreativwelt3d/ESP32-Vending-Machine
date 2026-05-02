@@ -217,7 +217,7 @@ Weitere Details zur Motor-Platine stehen in [motor_controller/README.md](motor_c
 #### Service-Menue oeffnen
 
 Wenn das Display auf "Automat bereit" steht, kann mit folgender nacheinander gedrücker Tasten `*` und `#` das Service-Menue geoeffnet werden.
-Danach muss die Service-PIN eingegeben werden.
+Danach muss die Service-PIN eingegeben werden. Der standard Pin ist: `12345678`
 
 #### Service-Menue
 
@@ -534,7 +534,7 @@ Important keys:
 - `*` = delete / backspace
 - `#` = regular input character in text fields
 
-If the display shows "Machine ready" then the service menu is opened by pressing `*` and `#` quickly one after another, then entering the service PIN.
+If the display shows "Machine ready" then the service menu is opened by pressing `*` and `#` quickly one after another, then entering the service PIN. The service pin is `12345678`
 
 Current service menu items:
 
